@@ -28,7 +28,10 @@ router.get('/api/categories', async (ctx) => {
 router.post('/api/categories', async (ctx) => {
   try {
     const { name } = ctx.request.body;
-    const [result] = await pool.execute('INSERT INTO categories (name) VALUES (?)', [name]);
+    const [result] = await pool.execute(
+      'INSERT INTO categories (name) VALUES (?)', 
+      [name]
+    );
     ctx.body = {
       id: result.insertId.toString(),
       name
@@ -70,6 +73,29 @@ router.delete('/api/categories/:id', async (ctx) => {
     console.error('删除分类失败:', error);
     ctx.status = 500;
     ctx.body = { error: '删除分类失败' };
+  }
+});
+
+// 更新分类
+router.put('/api/categories/:id', async (ctx) => {
+  try {
+    const { id } = ctx.params;
+    const { name } = ctx.request.body;
+    
+    await pool.execute(
+      'UPDATE categories SET name = ? WHERE id = ?',
+      [name, parseInt(id)]
+    );
+    
+    ctx.body = {
+      success: true,
+      id: id.toString(),
+      name
+    };
+  } catch (error) {
+    console.error('更新分类失败:', error);
+    ctx.status = 500;
+    ctx.body = { error: '更新分类失败' };
   }
 });
 

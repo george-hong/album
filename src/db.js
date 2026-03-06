@@ -12,7 +12,7 @@ export const initDatabase = async () => {
   }
 };
 
-// 获取所有分类
+// 获取分类失败
 export const getCategories = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/categories`);
@@ -22,7 +22,14 @@ export const getCategories = async () => {
     return await response.json();
   } catch (error) {
     console.error('获取分类失败:', error);
-    return [];
+    // 返回默认分类数据
+    return [
+      { id: '1', name: '全部' },
+      { id: '2', name: '风景' },
+      { id: '3', name: '人物' },
+      { id: '4', name: '动物' },
+      { id: '5', name: '建筑' },
+    ];
   }
 };
 
@@ -58,6 +65,26 @@ export const deleteCategory = async (categoryId) => {
     return await response.json();
   } catch (error) {
     console.error('删除分类失败:', error);
+    throw error;
+  }
+};
+
+// 更新分类
+export const updateCategory = async (categoryId, categoryData) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/categories/${categoryId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(categoryData)
+    });
+    if (!response.ok) {
+      throw new Error('更新分类失败');
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('更新分类失败:', error);
     throw error;
   }
 };

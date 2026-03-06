@@ -8,29 +8,24 @@
       <form @submit.prevent="handleSubmit" class="uploadForm">
         <div class="formGroup">
           <label class="label">图片名称</label>
-          <input
-            type="text"
+          <el-input
             v-model="photoName"
-            class="input"
             placeholder="请输入图片名称"
           />
         </div>
         
         <div class="formGroup">
           <label class="label">选择分类</label>
-          <div class="categoryCheckboxes">
-            <label
+          <div class="categoryTags">
+            <div
               v-for="category in categories"
               :key="category.id"
-              class="checkboxLabel"
+              class="categoryTag"
+              :class="{ 'active': selectedCategories.includes(category.id) }"
+              @click="toggleCategory(category.id)"
             >
-              <input
-                type="checkbox"
-                :value="category.id"
-                v-model="selectedCategories"
-              />
               {{ category.name }}
-            </label>
+            </div>
           </div>
         </div>
         
@@ -39,6 +34,7 @@
           <div
             class="fileLabel"
             :class="{ dragging: isDragging }"
+            @click="triggerFileInput"
             @dragover.prevent="handleDragOver"
             @dragleave.prevent="handleDragLeave"
             @drop.prevent="handleDrop"
@@ -78,12 +74,8 @@
         </div>
         
         <div class="formActions">
-          <button type="button" class="cancelButton" @click="close">
-            取消
-          </button>
-          <button type="submit" class="submitButton" :disabled="selectedFiles.length === 0">
-            上传
-          </button>
+          <el-button @click="close">取消</el-button>
+          <el-button type="primary" @click="handleSubmit" :disabled="selectedFiles.length === 0">上传</el-button>
         </div>
       </form>
     </div>
@@ -110,13 +102,26 @@ const categoryStore = useCategoryStore();
 const authStore = useAuthStore();
 
 const photoName = ref('');
-const selectedCategories = ref(['2']);
+const selectedCategories = ref([]);
 const selectedFiles = ref([]);
 const previewImages = ref([]);
 const isDragging = ref(false);
 const fileInput = ref(null);
 
 const categories = computed(() => categoryStore.categories);
+
+const toggleCategory = (categoryId) => {
+  const index = selectedCategories.value.indexOf(categoryId);
+  if (index > -1) {
+    selectedCategories.value.splice(index, 1);
+  } else {
+    selectedCategories.value.push(categoryId);
+  }
+};
+
+const triggerFileInput = () => {
+  fileInput.value?.click();
+};
 
 const close = () => {
   emit('close');
@@ -125,7 +130,7 @@ const close = () => {
 
 const resetForm = () => {
   photoName.value = '';
-  selectedCategories.value = ['2'];
+  selectedCategories.value = [];
   selectedFiles.value = [];
   previewImages.value = [];
   isDragging.value = false;
@@ -278,19 +283,42 @@ const handleSubmit = async () => {
   border-color: #0070f3;
 }
 
-.categoryCheckboxes {
+.categoryTags {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.5rem;
   margin-top: 0.5rem;
 }
 
-.checkboxLabel {
-  display: flex;
+.categoryTag {
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.9rem;
+  padding: 0.4rem 0.875rem;
+  background-color: #f5f7fa;
+  border: 1px solid #e4e7ed;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  color: #606266;
   cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.categoryTag:hover {
+  background-color: #ecf5ff;
+  border-color: #409EFF;
+  color: #409EFF;
+}
+
+.categoryTag.active {
+  background-color: #409EFF;
+  border-color: #409EFF;
+  color: white;
+  font-weight: 500;
+}
+
+.categoryTag.active:hover {
+  background-color: #66b1ff;
 }
 
 .fileLabel {

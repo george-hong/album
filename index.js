@@ -25,9 +25,17 @@ app.use(koaBody({
 app.use(serve(path.join(__dirname, 'dist')));
 app.use(serve(path.join(__dirname, 'images')));
 
-// API路由
+// API 路由
 app.use(router.routes());
 app.use(router.allowedMethods());
+
+// SPA fallback - 支持 History 模式
+app.use(async (ctx, next) => {
+  if (!ctx.path.startsWith('/api') && ctx.status === 404) {
+    ctx.type = 'html';
+    ctx.body = await import('fs').then(fs => fs.readFileSync(path.join(__dirname, 'dist/index.html'), 'utf-8'));
+  }
+});
 
 // 启动服务器
 const PORT = 3002;

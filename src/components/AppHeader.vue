@@ -4,38 +4,32 @@
     
     <!-- 桌面端搜索 -->
     <div class="searchContainer">
-      <svg class="searchIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-      <input
-        type="text"
-        placeholder="搜索图片..."
+      <el-input
         v-model="searchTerm"
-        class="searchInput"
+        placeholder="搜索图片..."
+        prefix-icon="Search"
+        style="width: 300px;"
       />
     </div>
 
     <!-- 桌面端按钮 -->
     <div class="headerButtons">
       <span class="userInfo">{{ currentUser.username }}</span>
-      <button
-        class="uploadButton"
-        @click="$emit('upload')"
-      >
-        <svg class="buttonIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+      <el-button type="primary" @click="$emit('upload')">
+        <template #icon>
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        </template>
         上传图片
-      </button>
-      <button
-        class="categoryButton"
-        @click="$emit('manageCategories')"
-      >
-        <svg class="buttonIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h16z"></path></svg>
+      </el-button>
+      <el-button @click="$emit('manageCategories')">
+        <template #icon>
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h16z"></path></svg>
+        </template>
         分类管理
-      </button>
-      <button
-        class="logoutButton"
-        @click="handleLogout"
-      >
+      </el-button>
+      <el-button @click="handleLogout">
         退出
-      </button>
+      </el-button>
     </div>
 
     <!-- 移动端菜单按钮 -->
@@ -51,35 +45,29 @@
   <!-- 移动端菜单 -->
   <div v-if="isMobileMenuOpen" class="mobileMenu">
     <div class="mobileSearchContainer">
-      <svg class="searchIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-      <input
-        type="text"
-        placeholder="搜索图片..."
+      <el-input
         v-model="searchTerm"
-        class="searchInput"
+        placeholder="搜索图片..."
+        prefix-icon="Search"
+        style="width: 100%;"
       />
     </div>
     <div class="mobileUserInfo">{{ currentUser.username }}</div>
-    <button
-      class="mobileUploadButton"
-      @click="$emit('upload')"
-    >
-      <svg class="buttonIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-      上传图片
-    </button>
-    <button
-      class="mobileCategoryButton"
-      @click="$emit('manageCategories')"
-    >
-      <svg class="buttonIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h16z"></path></svg>
-      分类管理
-    </button>
-    <button
-      class="mobileLogoutButton"
-      @click="handleLogout"
-    >
+    <el-button type="primary" @click="$emit('upload')" style="width: 100%; margin-bottom: 0.75rem;">
+      <template #icon>
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        上传图片
+      </template>
+    </el-button>
+    <el-button @click="$emit('manageCategories')" style="width: 100%; margin-bottom: 0.75rem;">
+      <template #icon>
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h16z"></path></svg>
+        分类管理
+      </template>
+    </el-button>
+    <el-button @click="handleLogout" style="width: 100%;">
       退出
-    </button>
+    </el-button>
   </div>
 </template>
 

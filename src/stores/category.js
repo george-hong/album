@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { getCategories, addCategory as dbAddCategory, deleteCategory as dbDeleteCategory } from '../db';
+import { getCategories, addCategory as dbAddCategory, deleteCategory as dbDeleteCategory, updateCategory as dbUpdateCategory } from '../db';
 
 export const useCategoryStore = defineStore('category', () => {
   const categories = ref([
@@ -12,9 +12,17 @@ export const useCategoryStore = defineStore('category', () => {
   ]);
   
   async function loadCategories() {
-    const cats = await getCategories();
-    if (cats.length > 0) {
-      categories.value = cats;
+    try {
+      const cats = await getCategories();
+      console.log('Categories from API:', cats);
+      if (cats.length > 0) {
+        categories.value = cats;
+      } else {
+        console.log('Using default categories');
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+      // 保留默认分类数据
     }
   }
   
@@ -28,10 +36,16 @@ export const useCategoryStore = defineStore('category', () => {
     await loadCategories();
   }
   
+  async function updateCategory(categoryId, categoryData) {
+    await dbUpdateCategory(categoryId, categoryData);
+    await loadCategories();
+  }
+  
   return {
     categories,
     loadCategories,
     addCategory,
-    deleteCategory
+    deleteCategory,
+    updateCategory
   };
 });

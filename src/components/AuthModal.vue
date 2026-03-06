@@ -4,44 +4,39 @@
       <div class="authModalHeader">
         <h2>{{ isRegistering ? '注册' : '登录' }}</h2>
       </div>
-      <form @submit.prevent="handleSubmit" class="authForm">
-        <div class="formGroup">
-          <label for="username" class="label">用户名</label>
-          <input
-            type="text"
-            id="username"
+      <el-form @submit.prevent="handleSubmit" class="authForm">
+        <el-form-item label="用户名" required>
+          <el-input
             v-model="formData.username"
-            class="input"
             placeholder="请输入用户名"
-            required
           />
-        </div>
-        <div class="formGroup">
-          <label for="password" class="label">密码</label>
-          <input
+        </el-form-item>
+        <el-form-item label="密码" required>
+          <el-input
             type="password"
-            id="password"
             v-model="formData.password"
-            class="input"
             placeholder="请输入密码"
-            required
           />
-        </div>
+        </el-form-item>
         <div class="formActions">
-          <button type="submit" class="submitButton">
+          <el-button type="primary" native-type="submit" style="width: 100%;">
             {{ isRegistering ? '注册' : '登录' }}
-          </button>
+          </el-button>
         </div>
         <div class="authSwitch">
           {{ isRegistering ? '已有账号？' : '没有账号？' }}
-          <button type="button" class="switchButton" @click="toggleMode">
+          <el-button type="text" @click="toggleMode">
             {{ isRegistering ? '去登录' : '去注册' }}
-          </button>
+          </el-button>
         </div>
-        <div v-if="errorMessage" class="errorMessage">
-          {{ errorMessage }}
-        </div>
-      </form>
+        <el-alert
+          v-if="errorMessage"
+          :title="errorMessage"
+          type="error"
+          show-icon
+          style="margin-top: 1rem;"
+        />
+      </el-form>
     </div>
   </div>
 </template>
