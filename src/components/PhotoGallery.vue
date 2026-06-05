@@ -1,146 +1,151 @@
 <template>
-  <div class="photoGallery">
-    <!-- 导航栏 -->
-    <header class="header">
-      <div class="logo">相册网站</div>
-      
-      <div class="headerButtons">
-        <span class="userInfo">{{ currentUser.username }}</span>
-        <el-button type="primary" @click="isUploadOpen = true">
-          <template #icon>
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-          </template>
-          上传图片
-        </el-button>
-        <el-button @click="$router.push('/categories')">
-          <template #icon>
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h16z"></path></svg>
-          </template>
-          分类管理
-        </el-button>
-        <el-button @click="handleLogout">
-          退出
-        </el-button>
+  <main class="photoGallery">
+    <header class="topbar">
+      <div class="brandBlock">
+        <div class="brandMark">P</div>
+        <div>
+          <h1>相册</h1>
+          <p>{{ total }} 张照片</p>
+        </div>
+      </div>
+
+      <div class="topbarActions">
+        <span class="userChip">{{ currentUser.username }}</span>
+        <el-button :icon="Folder" @click="router.push('/categories')">分类</el-button>
+        <el-button type="primary" :icon="Upload" @click="isUploadOpen = true">上传</el-button>
+        <el-button :icon="SwitchButton" circle title="退出登录" @click="handleLogout" />
       </div>
     </header>
-    
-    <div class="galleryContent">
-    <!-- 分类选择 - 小标签形式 -->
-    <div class="categoryFilter">
-      <div class="categoryFilterHeader">
-        <div class="categoryFilterTitle">
-          <el-icon><Folder /></el-icon>
-          <span>分类筛选</span>
-        </div>
-        <div class="filterModeToggle" v-if="selectedCategories.length > 0">
-          <span class="filterModeLabel">筛选模式：</span>
-          <el-button
-            size="small"
-            :type="filterMode === 'AND' ? 'primary' : ''"
-            @click="setFilterMode('AND')"
-          >
-            交集
-          </el-button>
-          <el-button
-            size="small"
-            :type="filterMode === 'OR' ? 'primary' : ''"
-            @click="setFilterMode('OR')"
-          >
-            并集
-          </el-button>
-        </div>
-      </div>
-      <div class="categoryTags">
-        <div
-          v-for="category in categories"
-          :key="category.id"
+
+    <section class="galleryToolbar" aria-label="照片筛选">
+      <el-input
+        v-model="searchDraft"
+        class="searchInput"
+        :prefix-icon="Search"
+        placeholder="搜索文件名"
+        clearable
+      />
+
+      <div class="categoryScroller">
+        <button
+          type="button"
           class="categoryTag"
-          :class="{ 'active': selectedCategories.includes(category.id) }"
+          :class="{ active: selectedCategories.length === 0 }"
+          @click="clearCategoryFilter"
+        >
+          全部
+        </button>
+        <button
+          v-for="category in visibleCategories"
+          :key="category.id"
+          type="button"
+          class="categoryTag"
+          :class="{ active: selectedCategories.includes(category.id) }"
           @click="toggleCategory(category.id)"
         >
           {{ category.name }}
-        </div>
+        </button>
       </div>
-    </div>
 
-    <!-- 图片网格 -->
-    <div v-if="filteredPhotos.length > 0" class="photoGrid">
-      <div
-        v-for="photo in filteredPhotos"
-        :key="photo.id"
-        class="photoCard"
-      >
-        <div class="photoImageContainer">
-          <!-- 模糊背景图片 -->
-          <div 
-            class="photoImageBg"
-            :style="{ backgroundImage: `url(${photo.path})` }"
-          ></div>
-          <!-- 主图片 -->
-          <img
-            :src="photo.path"
-            :alt="photo.filename"
-            class="photoImage"
-            @click="openImageViewer(photo)"
-          />
-        </div>
-        <div class="photoInfo">
-          <div class="photoFilename">{{ photo.filename }}</div>
-          <div class="photoCategories">
-            <span
-              v-for="categoryId in photo.categories"
-              :key="categoryId"
-              class="photoCategory"
-            >
-              {{ getCategoryName(categoryId) }}
-            </span>
-            <button
-              class="deletePhotoButton"
-              @click="showDeleteConfirm(photo)"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-            </button>
+      <el-segmented
+        v-if="selectedCategories.length > 1"
+        v-model="filterMode"
+        class="modeSwitch"
+        :options="filterModeOptions"
+      />
+    </section>
+
+    <section class="gallerySurface" aria-live="polite">
+      <div v-if="isRefreshing" class="masonryGrid skeletonGrid">
+        <div v-for="index in 12" :key="index" class="photoSkeleton" />
+      </div>
+
+      <div v-else-if="photos.length > 0" class="masonryGrid">
+        <article v-for="photo in photos" :key="photo.id" class="photoCard">
+          <button class="imageButton" type="button" @click="openImageViewer(photo)">
+            <img
+              :src="imageSrc(photo.path)"
+              :alt="photo.filename"
+              class="photoImage"
+              loading="lazy"
+              decoding="async"
+            />
+          </button>
+          <div class="photoMeta">
+            <div class="photoName" :title="photo.filename">{{ photo.filename }}</div>
+            <div class="photoFooter">
+              <div class="photoCategories">
+                <span v-for="categoryId in photo.categories" :key="categoryId">
+                  {{ getCategoryName(categoryId) }}
+                </span>
+              </div>
+              <el-button
+                :icon="Delete"
+                circle
+                text
+                class="deleteButton"
+                title="删除"
+                @click="showDeleteConfirm(photo)"
+              />
+            </div>
           </div>
-        </div>
+        </article>
       </div>
-    </div>
 
-    <!-- 空状态 -->
-    <div v-else class="emptyState">
-      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-      <p>暂无图片</p>
-    </div>
+      <div v-else class="emptyState">
+        <el-icon><Picture /></el-icon>
+        <h2>暂无照片</h2>
+        <p>上传几张图片后，这里会以瀑布流展示。</p>
+        <el-button type="primary" :icon="Upload" @click="isUploadOpen = true">上传照片</el-button>
+      </div>
 
-    <!-- 图片查看器 -->
+      <div ref="loadMoreTrigger" class="loadMoreTrigger">
+        <el-button
+          v-if="hasMore && !isRefreshing"
+          :loading="isLoading"
+          :icon="ArrowDown"
+          @click="loadMore"
+        >
+          加载更多
+        </el-button>
+        <span v-else-if="photos.length > 0 && !isRefreshing">已显示全部</span>
+      </div>
+    </section>
+
     <ImageViewer
       :is-open="isImageViewerOpen"
       :image-url="viewerImageUrl"
       @close="isImageViewerOpen = false"
     />
 
-    <!-- 删除确认 -->
-      <DeleteConfirm
-        :is-open="isDeleteConfirmOpen"
-        :photo-id="deletePhotoId"
-        :photo-name="deletePhotoName"
-        @close="isDeleteConfirmOpen = false"
-        @confirm="handleDeleteConfirm"
-      />
-    </div>
-    
-    <!-- 图片上传弹窗 -->
+    <DeleteConfirm
+      :is-open="isDeleteConfirmOpen"
+      :photo-id="deletePhotoId"
+      :photo-name="deletePhotoName"
+      @close="isDeleteConfirmOpen = false"
+      @confirm="handleDeleteConfirm"
+    />
+
     <PhotoUpload
       :is-open="isUploadOpen"
       @close="isUploadOpen = false"
       @success="handleUploadSuccess"
     />
-  </div>
+  </main>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { Folder } from '@element-plus/icons-vue';
+import {
+  ArrowDown,
+  Delete,
+  Folder,
+  Picture,
+  Search,
+  SwitchButton,
+  Upload
+} from '@element-plus/icons-vue';
 import { usePhotoStore } from '../stores/photo';
 import { useCategoryStore } from '../stores/category';
 import { useAuthStore } from '../stores/auth';
@@ -159,27 +164,52 @@ const isDeleteConfirmOpen = ref(false);
 const deletePhotoId = ref('');
 const deletePhotoName = ref('');
 const isUploadOpen = ref(false);
+const loadMoreTrigger = ref(null);
+const searchDraft = ref(photoStore.searchTerm);
+let observer;
+let searchTimer;
+
+const filterModeOptions = [
+  { label: '交集', value: 'AND' },
+  { label: '并集', value: 'OR' }
+];
 
 const currentUser = computed(() => authStore.currentUser);
-
 const categories = computed(() => categoryStore.categories);
-
-const filteredPhotos = computed(() => photoStore.filteredPhotos);
+const visibleCategories = computed(() => categories.value.filter(category => category.name !== '全部'));
+const photos = computed(() => photoStore.photos);
+const total = computed(() => photoStore.total);
+const hasMore = computed(() => photoStore.hasMore);
+const isLoading = computed(() => photoStore.isLoading);
+const isRefreshing = computed(() => photoStore.isRefreshing);
+const selectedCategories = computed(() => photoStore.selectedCategories);
 const filterMode = computed({
   get: () => photoStore.filterMode,
-  set: (value) => photoStore.setFilterMode(value)
-});
-const selectedCategories = computed({
-  get: () => photoStore.selectedCategories,
-  set: (value) => photoStore.setSelectedCategories(value)
+  set: (value) => {
+    photoStore.setFilterMode(value);
+  }
 });
 
-const setFilterMode = (mode) => {
-  photoStore.setFilterMode(mode);
+const refresh = async () => {
+  await photoStore.refreshPhotos(authStore.currentUser.id);
+};
+
+const loadMore = async () => {
+  await photoStore.loadMorePhotos(authStore.currentUser.id);
+};
+
+const imageSrc = (path) => {
+  if (!path) {
+    return '';
+  }
+  if (/^https?:\/\//.test(path) || path.startsWith('/')) {
+    return path;
+  }
+  return `/${path}`;
 };
 
 const openImageViewer = (photo) => {
-  viewerImageUrl.value = photo.path;
+  viewerImageUrl.value = imageSrc(photo.path);
   isImageViewerOpen.value = true;
 };
 
@@ -190,300 +220,398 @@ const showDeleteConfirm = (photo) => {
 };
 
 const handleDeleteConfirm = async (photoId) => {
-  try {
-    await photoStore.deletePhoto(photoId);
-  } catch (error) {
-    console.error('删除图片失败:', error);
-  }
+  await photoStore.deletePhoto(photoId);
 };
 
 const getCategoryName = (categoryId) => {
   const category = categories.value.find(c => c.id === categoryId);
-  return category ? category.name : '未知';
+  return category ? category.name : '未分类';
 };
 
-const toggleCategory = (categoryId) => {
-  const index = selectedCategories.value.indexOf(categoryId);
-  if (index > -1) {
-    selectedCategories.value.splice(index, 1);
-  } else {
-    selectedCategories.value.push(categoryId);
-  }
+const toggleCategory = async (categoryId) => {
+  photoStore.toggleCategory(categoryId);
+  await refresh();
+};
+
+const clearCategoryFilter = async () => {
+  photoStore.setSelectedCategories([]);
+  await refresh();
 };
 
 const handleUploadSuccess = async () => {
-  await photoStore.loadPhotos(authStore.currentUser.id);
+  await refresh();
 };
 
 const handleLogout = () => {
   authStore.logout();
-  photoStore.photos.value = [];
+  photoStore.resetPhotos();
   router.push('/');
 };
+
+watch(searchDraft, (value) => {
+  window.clearTimeout(searchTimer);
+  searchTimer = window.setTimeout(async () => {
+    photoStore.setSearchTerm(value.trim());
+    await refresh();
+  }, 300);
+});
+
+watch(filterMode, async () => {
+  await refresh();
+});
+
+onMounted(async () => {
+  await nextTick();
+  observer = new IntersectionObserver((entries) => {
+    const [entry] = entries;
+    if (entry.isIntersecting && hasMore.value && !isLoading.value && !isRefreshing.value) {
+      loadMore();
+    }
+  }, {
+    rootMargin: '640px 0px'
+  });
+
+  if (loadMoreTrigger.value) {
+    observer.observe(loadMoreTrigger.value);
+  }
+});
+
+onUnmounted(() => {
+  window.clearTimeout(searchTimer);
+  observer?.disconnect();
+});
 </script>
 
 <style scoped>
-.header {
-  background-color: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 1rem 2rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.logo {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #333;
-}
-
-.headerButtons {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.userInfo {
-  font-size: 0.9rem;
-  color: #666;
-  margin-right: 0.5rem;
-}
-
 .photoGallery {
   min-height: 100vh;
-  background-color: #f5f5f5;
+  color: #1c1a17;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(246, 243, 238, 0.96) 34rem),
+    #f6f3ee;
 }
 
-.galleryContent {
-  padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.categoryFilter {
-  margin-bottom: 2rem;
-  padding: 1.5rem;
-  background-color: white;
-  border-radius: 8px;
-  border: 1px solid #eee;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-}
-
-.categoryFilterHeader {
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 3vw, 2.5rem);
+  border-bottom: 1px solid rgba(48, 42, 34, 0.08);
+  background: rgba(255, 253, 248, 0.9);
+  backdrop-filter: blur(18px);
 }
 
-.categoryFilterTitle {
+.brandBlock {
   display: flex;
   align-items: center;
+  gap: 0.875rem;
+  min-width: 0;
+}
+
+.brandMark {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 800;
+  background: #1f5f54;
+}
+
+.brandBlock h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+
+.brandBlock p {
+  margin: 0.125rem 0 0;
+  color: #776f64;
+  font-size: 0.85rem;
+}
+
+.topbarActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.userChip {
+  max-width: 10rem;
+  padding: 0.425rem 0.7rem;
+  overflow: hidden;
+  border: 1px solid rgba(48, 42, 34, 0.1);
+  border-radius: 999px;
+  color: #504a42;
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.galleryToolbar {
+  display: grid;
+  grid-template-columns: minmax(14rem, 21rem) minmax(0, 1fr) auto;
+  gap: 0.875rem;
+  align-items: center;
+  padding: 1.15rem clamp(1rem, 3vw, 2.5rem);
+  border-bottom: 1px solid rgba(48, 42, 34, 0.08);
+}
+
+.searchInput {
+  width: 100%;
+}
+
+.categoryScroller {
+  display: flex;
   gap: 0.5rem;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #303133;
-}
-
-.categoryFilterTitle .el-icon {
-  font-size: 1.3rem;
-  color: #409EFF;
-}
-
-.filterModeToggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.filterModeLabel {
-  font-size: 0.9rem;
-  color: #606266;
-}
-
-.categoryTags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  overflow-x: auto;
+  padding: 0.125rem 0 0.25rem;
+  scrollbar-width: thin;
 }
 
 .categoryTag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.5rem 1rem;
-  background-color: #f5f7fa;
-  border: 1px solid #e4e7ed;
-  border-radius: 16px;
-  font-size: 0.9rem;
-  color: #606266;
+  flex: 0 0 auto;
+  min-height: 2rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid rgba(48, 42, 34, 0.12);
+  border-radius: 999px;
+  color: #514b43;
+  font: inherit;
+  font-size: 0.875rem;
+  background: rgba(255, 255, 255, 0.72);
   cursor: pointer;
-  transition: all 0.2s;
-  user-select: none;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
 }
 
 .categoryTag:hover {
-  background-color: #ecf5ff;
-  border-color: #409EFF;
-  color: #409EFF;
+  border-color: rgba(31, 95, 84, 0.45);
+  color: #17483f;
 }
 
 .categoryTag.active {
-  background-color: #409EFF;
-  border-color: #409EFF;
-  color: white;
-  font-weight: 500;
+  border-color: #1f5f54;
+  color: #fff;
+  background: #1f5f54;
 }
 
-.categoryTag.active:hover {
-  background-color: #66b1ff;
+.modeSwitch {
+  justify-self: end;
 }
 
-.photoGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 1.5rem;
+.gallerySurface {
+  width: min(100%, 1560px);
+  margin: 0 auto;
+  padding: clamp(1rem, 2.5vw, 2rem);
+}
+
+.masonryGrid {
+  column-count: 5;
+  column-gap: 1rem;
 }
 
 .photoCard {
-  background-color: white;
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(48, 42, 34, 0.1);
   border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transition: transform 0.3s, box-shadow 0.3s;
+  background: #fffdfa;
+  box-shadow: 0 14px 34px rgba(40, 34, 26, 0.08);
+  break-inside: avoid;
 }
 
-.photoCard:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.photoImageContainer {
-  position: relative;
-  height: 200px;
-  overflow: hidden;
-  background-color: #f0f0f0;
-}
-
-.photoImageBg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  filter: blur(10px);
-  z-index: 1;
-  opacity: 0.7;
+.imageButton {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: #ebe6de;
+  cursor: zoom-in;
 }
 
 .photoImage {
+  display: block;
   width: 100%;
-  height: 100%;
-  object-fit: contain;
-  cursor: pointer;
-  position: relative;
-  z-index: 2;
+  height: auto;
+  min-height: 8rem;
+  object-fit: cover;
 }
 
-.photoCategories {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  width: 100%;
-  align-items: center;
+.photoMeta {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem;
 }
 
-.deletePhotoButton {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #ff4757;
-  padding: 0.25rem;
-  border-radius: 4px;
-  transition: background-color 0.3s, opacity 0.3s;
-  opacity: 0;
-  margin-left: auto;
-}
-
-.photoCard:hover .deletePhotoButton {
-  opacity: 1;
-}
-
-.deletePhotoButton:hover {
-  background-color: rgba(255, 71, 87, 0.1);
-}
-
-.photoInfo {
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  align-items: flex-start;
-}
-
-.photoFilename {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: #333;
-  width: 100%;
+.photoName {
   overflow: hidden;
+  color: #25211d;
+  font-size: 0.9rem;
+  font-weight: 650;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.photoFooter {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .photoCategories {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
-  width: 100%;
+  gap: 0.35rem;
+  min-width: 0;
 }
 
-.photoCategory {
-  font-size: 0.8rem;
-  color: #666;
-  background-color: #f0f0f0;
-  padding: 0.25rem 0.5rem;
-  border-radius: 12px;
+.photoCategories span {
+  max-width: 7rem;
+  padding: 0.16rem 0.45rem;
+  overflow: hidden;
+  border-radius: 999px;
+  color: #5d554a;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #eee7dc;
+}
+
+.deleteButton {
+  flex: 0 0 auto;
+  color: #a23b32;
+  opacity: 0.68;
+}
+
+.deleteButton:hover {
+  opacity: 1;
 }
 
 .emptyState {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem 2rem;
+  display: grid;
+  min-height: 48vh;
+  place-items: center;
+  align-content: center;
+  gap: 0.75rem;
+  padding: 2rem;
+  color: #625a50;
   text-align: center;
-  color: #999;
 }
 
-.emptyState svg {
-  margin-bottom: 1rem;
-  opacity: 0.5;
+.emptyState .el-icon {
+  color: #1f5f54;
+  font-size: 3rem;
+}
+
+.emptyState h2 {
+  margin: 0;
+  color: #1f1b17;
+  font-size: 1.35rem;
+  letter-spacing: 0;
 }
 
 .emptyState p {
-  margin: 0;
-  font-size: 1.1rem;
+  margin: 0 0 0.5rem;
+  color: #71695f;
 }
 
-@media (max-width: 768px) {
-  .photoGallery {
-    padding: 1rem;
+.loadMoreTrigger {
+  display: grid;
+  min-height: 4.5rem;
+  place-items: center;
+  color: #7a7268;
+  font-size: 0.9rem;
+}
+
+.photoSkeleton {
+  display: inline-block;
+  width: 100%;
+  height: 16rem;
+  margin: 0 0 1rem;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #ebe5da 0%, #f8f4ed 50%, #ebe5da 100%);
+  background-size: 220% 100%;
+  break-inside: avoid;
+  animation: shimmer 1.2s ease-in-out infinite;
+}
+
+.photoSkeleton:nth-child(3n + 1) {
+  height: 20rem;
+}
+
+.photoSkeleton:nth-child(3n + 2) {
+  height: 12rem;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -220% 0;
   }
-  
-  .photoGrid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 1rem;
+}
+
+@media (max-width: 1180px) {
+  .masonryGrid {
+    column-count: 4;
   }
-  
-  .photoImageContainer {
-    height: 150px;
+}
+
+@media (max-width: 920px) {
+  .galleryToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .modeSwitch {
+    justify-self: start;
+  }
+
+  .masonryGrid {
+    column-count: 3;
+  }
+}
+
+@media (max-width: 680px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .topbarActions {
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 0.125rem;
+  }
+
+  .userChip {
+    display: none;
+  }
+
+  .masonryGrid {
+    column-count: 2;
+    column-gap: 0.75rem;
+  }
+
+  .photoCard {
+    margin-bottom: 0.75rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .masonryGrid {
+    column-count: 1;
   }
 }
 </style>

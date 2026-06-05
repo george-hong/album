@@ -1,14 +1,29 @@
 import Koa from 'koa';
-import bodyParser from 'koa-bodyparser';
 import serve from 'koa-static';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execFileSync } from 'child_process';
 import router from './routes.js';
 import { initDatabase } from './db.js';
 import koaBody from 'koa-body';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const buildFrontend = () => {
+  console.log('Building frontend...');
+  execFileSync(
+    process.execPath,
+    [path.join(__dirname, 'node_modules', 'vite', 'bin', 'vite.js'), 'build'],
+    {
+      cwd: __dirname,
+      stdio: 'inherit'
+    }
+  );
+  console.log('Frontend build complete.');
+};
+
+buildFrontend();
 
 const app = new Koa();
 

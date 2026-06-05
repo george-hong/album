@@ -1,142 +1,131 @@
-// 使用API与后端通信
 const API_BASE_URL = '';
 
-// 初始化数据库
 export const initDatabase = async () => {
-  try {
-    // 后端会自动初始化数据库
-    console.log('数据库初始化成功');
-  } catch (error) {
-    console.error('数据库初始化失败:', error);
-    throw error;
-  }
+  console.log('Database is ready');
 };
 
-// 获取分类失败
 export const getCategories = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/categories`);
     if (!response.ok) {
-      throw new Error('获取分类失败');
+      throw new Error('Failed to load categories');
     }
     return await response.json();
   } catch (error) {
-    console.error('获取分类失败:', error);
-    // 返回默认分类数据
+    console.error('Failed to load categories:', error);
     return [
       { id: '1', name: '全部' },
       { id: '2', name: '风景' },
       { id: '3', name: '人物' },
       { id: '4', name: '动物' },
-      { id: '5', name: '建筑' },
+      { id: '5', name: '建筑' }
     ];
   }
 };
 
-// 添加分类
 export const addCategory = async (category) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/categories`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(category)
-    });
-    if (!response.ok) {
-      throw new Error('添加分类失败');
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('添加分类失败:', error);
-    throw error;
+  const response = await fetch(`${API_BASE_URL}/api/categories`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(category)
+  });
+  if (!response.ok) {
+    throw new Error('Failed to add category');
   }
+  return await response.json();
 };
 
-// 删除分类
 export const deleteCategory = async (categoryId) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/categories/${categoryId}`, {
-      method: 'DELETE'
-    });
-    if (!response.ok) {
-      throw new Error('删除分类失败');
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('删除分类失败:', error);
-    throw error;
+  const response = await fetch(`${API_BASE_URL}/api/categories/${categoryId}`, {
+    method: 'DELETE'
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete category');
   }
+  return await response.json();
 };
 
-// 更新分类
 export const updateCategory = async (categoryId, categoryData) => {
+  const response = await fetch(`${API_BASE_URL}/api/categories/${categoryId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(categoryData)
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update category');
+  }
+  return await response.json();
+};
+
+export const getPhotos = async (userId, options = {}) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/categories/${categoryId}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(categoryData)
-    });
-    if (!response.ok) {
-      throw new Error('更新分类失败');
+    const params = new URLSearchParams();
+    params.set('page', String(options.page || 1));
+    params.set('limit', String(options.limit || 24));
+
+    if (options.search) {
+      params.set('search', options.search);
     }
-    return await response.json();
+    if (options.filterMode) {
+      params.set('filterMode', options.filterMode);
+    }
+    if (options.categories?.length) {
+      params.set('categories', options.categories.join(','));
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/photos/${userId}?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error('Failed to load photos');
+    }
+
+    const data = await response.json();
+    if (Array.isArray(data)) {
+      return {
+        items: data,
+        page: 1,
+        limit: data.length,
+        total: data.length,
+        hasMore: false
+      };
+    }
+    return data;
   } catch (error) {
-    console.error('更新分类失败:', error);
-    throw error;
+    console.error('Failed to load photos:', error);
+    return {
+      items: [],
+      page: 1,
+      limit: options.limit || 24,
+      total: 0,
+      hasMore: false
+    };
   }
 };
 
-// 获取用户的图片
-export const getPhotos = async (userId) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/photos/${userId}`);
-    if (!response.ok) {
-      throw new Error('获取图片失败');
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('获取图片失败:', error);
-    return [];
-  }
-};
-
-// 添加图片
 export const addPhoto = async (formData) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/photos`, {
-      method: 'POST',
-      body: formData
-    });
-    if (!response.ok) {
-      throw new Error('添加图片失败');
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('添加图片失败:', error);
-    throw error;
+  const response = await fetch(`${API_BASE_URL}/api/photos`, {
+    method: 'POST',
+    body: formData
+  });
+  if (!response.ok) {
+    throw new Error('Failed to add photo');
   }
+  return await response.json();
 };
 
-// 删除图片
 export const deletePhoto = async (photoId) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/photos/${photoId}`, {
-      method: 'DELETE'
-    });
-    if (!response.ok) {
-      throw new Error('删除图片失败');
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('删除图片失败:', error);
-    throw error;
+  const response = await fetch(`${API_BASE_URL}/api/photos/${photoId}`, {
+    method: 'DELETE'
+  });
+  if (!response.ok) {
+    throw new Error('Failed to delete photo');
   }
+  return await response.json();
 };
 
-// 验证用户
 export const validateUser = async (username, password) => {
   try {
     const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
@@ -151,33 +140,25 @@ export const validateUser = async (username, password) => {
     }
     return await response.json();
   } catch (error) {
-    console.error('验证用户失败:', error);
+    console.error('Failed to validate user:', error);
     return null;
   }
 };
 
-// 注册用户
 export const registerUser = async (userData) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(userData)
-    });
-    if (!response.ok) {
-      throw new Error('注册用户失败');
-    }
-    return await response.json();
-  } catch (error) {
-    console.error('注册用户失败:', error);
-    throw error;
+  const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(userData)
+  });
+  if (!response.ok) {
+    throw new Error('Failed to register user');
   }
+  return await response.json();
 };
 
-// 关闭数据库连接
 export const closeDatabase = async () => {
-  // API不需要关闭连接
-  console.log('数据库连接已关闭');
+  console.log('Database connection closed');
 };

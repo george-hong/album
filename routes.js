@@ -9,7 +9,6 @@ const __dirname = path.dirname(__filename);
 
 const router = new Router();
 
-// 获取所有分类
 router.get('/api/categories', async (ctx) => {
   try {
     const [categories] = await pool.execute('SELECT * FROM categories');
@@ -18,18 +17,17 @@ router.get('/api/categories', async (ctx) => {
       name: cat.name
     }));
   } catch (error) {
-    console.error('获取分类失败:', error);
+    console.error('Failed to load categories:', error);
     ctx.status = 500;
-    ctx.body = { error: '获取分类失败' };
+    ctx.body = { error: 'Failed to load categories' };
   }
 });
 
-// 添加分类
 router.post('/api/categories', async (ctx) => {
   try {
     const { name } = ctx.request.body;
     const [result] = await pool.execute(
-      'INSERT INTO categories (name) VALUES (?)', 
+      'INSERT INTO categories (name) VALUES (?)',
       [name]
     );
     ctx.body = {
@@ -37,77 +35,115 @@ router.post('/api/categories', async (ctx) => {
       name
     };
   } catch (error) {
-    console.error('添加分类失败:', error);
+    console.error('Failed to add category:', error);
     ctx.status = 500;
-    ctx.body = { error: '添加分类失败' };
+    ctx.body = { error: 'Failed to add category' };
   }
 });
 
-// 删除分类
 router.delete('/api/categories/:id', async (ctx) => {
   try {
     const { id } = ctx.params;
-    
-    // 开始事务
     const connection = await pool.getConnection();
     await connection.beginTransaction();
-    
+
     try {
-      // 删除分类关联
-      await connection.execute('DELETE FROM photo_categories WHERE category_id = ?', [parseInt(id)]);
-      // 删除分类
-      await connection.execute('DELETE FROM categories WHERE id = ?', [parseInt(id)]);
-      
-      // 提交事务
+      await connection.execute('DELETE FROM photo_categories WHERE category_id = ?', [parseInt(id, 10)]);
+      await connection.execute('DELETE FROM categories WHERE id = ?', [parseInt(id, 10)]);
       await connection.commit();
       connection.release();
-      
       ctx.body = { success: true };
     } catch (error) {
-      // 回滚事务
       await connection.rollback();
       connection.release();
       throw error;
     }
   } catch (error) {
-    console.error('删除分类失败:', error);
+    console.error('Failed to delete category:', error);
     ctx.status = 500;
-    ctx.body = { error: '删除分类失败' };
+    ctx.body = { error: 'Failed to delete category' };
   }
 });
 
-// 更新分类
 router.put('/api/categories/:id', async (ctx) => {
   try {
     const { id } = ctx.params;
     const { name } = ctx.request.body;
-    
+
     await pool.execute(
       'UPDATE categories SET name = ? WHERE id = ?',
-      [name, parseInt(id)]
+      [name, parseInt(id, 10)]
     );
-    
+
     ctx.body = {
       success: true,
       id: id.toString(),
       name
     };
   } catch (error) {
-    console.error('更新分类失败:', error);
+    console.error('Failed to update category:', error);
     ctx.status = 500;
-    ctx.body = { error: '更新分类失败' };
+    ctx.body = { error: 'Failed to update category' };
   }
 });
 
-// 获取用户的图片
 router.get('/api/photos/:userId', async (ctx) => {
   try {
     const { userId } = ctx.params;
-    
-    // 获取用户的图片（只获取状态为1的图片）
-    const [photos] = await pool.execute('SELECT * FROM photos WHERE user_id = ? AND status = 1', [parseInt(userId)]);
-    
-    // 为每个图片获取分类
+    const page = Math.max(parseInt(ctx.query.page || '1', 10), 1);
+    const limit = Math.min(Math.max(parseInt(ctx.query.limit || '24', 10), 1), 60);
+    const offset = (page - 1) * limit;
+    const search = (ctx.query.search || '').trim();
+    const filterMode = ctx.query.filterMode === 'OR' ? 'OR' : 'AND';
+    const categoryIds = (ctx.query.categories || '')
+      .split(',')
+      .map(id => parseInt(id, 10))
+      .filter(Number.isFinite);
+
+    const params = [parseInt(userId, 10)];
+    const whereParts = ['p.user_id = ?', 'p.status = 1'];
+
+    if (search) {
+      whereParts.push('p.filename LIKE ?');
+      params.push(`%${search}%`);
+    }
+
+    if (categoryIds.length > 0) {
+      if (filterMode === 'AND') {
+        whereParts.push(`p.id IN (
+          SELECT photo_id
+          FROM photo_categories
+          WHERE category_id IN (${categoryIds.map(() => '?').join(',')})
+          GROUP BY photo_id
+          HAVING COUNT(DISTINCT category_id) = ?
+        )`);
+        params.push(...categoryIds, categoryIds.length);
+      } else {
+        whereParts.push(`EXISTS (
+          SELECT 1
+          FROM photo_categories pc_filter
+          WHERE pc_filter.photo_id = p.id
+          AND pc_filter.category_id IN (${categoryIds.map(() => '?').join(',')})
+        )`);
+        params.push(...categoryIds);
+      }
+    }
+
+    const whereSql = whereParts.join(' AND ');
+    const [countRows] = await pool.execute(
+      `SELECT COUNT(*) AS total FROM photos p WHERE ${whereSql}`,
+      params
+    );
+
+    const [photos] = await pool.execute(
+      `SELECT p.*
+       FROM photos p
+       WHERE ${whereSql}
+       ORDER BY p.id DESC
+       LIMIT ${limit} OFFSET ${offset}`,
+      params
+    );
+
     const photosWithCategories = await Promise.all(
       photos.map(async (photo) => {
         const [categories] = await pool.execute(
@@ -123,143 +159,118 @@ router.get('/api/photos/:userId', async (ctx) => {
         };
       })
     );
-    
-    ctx.body = photosWithCategories;
+
+    const total = countRows[0]?.total || 0;
+    ctx.body = {
+      items: photosWithCategories,
+      page,
+      limit,
+      total,
+      hasMore: offset + photosWithCategories.length < total
+    };
   } catch (error) {
-    console.error('获取图片失败:', error);
+    console.error('Failed to load photos:', error);
     ctx.status = 500;
-    ctx.body = { error: '获取图片失败' };
+    ctx.body = { error: 'Failed to load photos' };
   }
 });
 
-// 添加图片
 router.post('/api/photos', async (ctx) => {
   try {
     const { user_id, categories, photo_name } = ctx.request.body;
     const files = ctx.request.files;
-    
-    // 确保categories是数组
-    const categoryArray = Array.isArray(categories) ? categories : [categories];
-    
+    const categoryArray = Array.isArray(categories) ? categories : [categories].filter(Boolean);
+
     if (!files || !files.file) {
       ctx.status = 400;
-      ctx.body = { error: '请选择文件' };
+      ctx.body = { error: 'Please choose at least one file' };
       return;
     }
-    
-    // 调试信息
-    console.log('接收到的分类ID:', categoryArray);
-    
-    // 处理多个文件上传
+
     const uploadedFiles = Array.isArray(files.file) ? files.file : [files.file];
     const results = [];
-    
-    // 开始事务
     const connection = await pool.getConnection();
     await connection.beginTransaction();
-    
+
     try {
       for (const file of uploadedFiles) {
-        // 生成随机文件名
         const randomName = Math.random().toString(36).substring(2, 15) + path.extname(file.name);
-        
-        // 确保images目录存在
         const imagesDir = path.join(__dirname, 'images');
         if (!fs.existsSync(imagesDir)) {
           fs.mkdirSync(imagesDir, { recursive: true });
         }
-        
-        // 重命名文件到images目录
+
         const newFilePath = path.join(imagesDir, randomName);
         fs.renameSync(file.path, newFilePath);
-        
-        // 确定文件名
+
         const filename = photo_name || file.name;
-        
-        // 插入图片
         const [result] = await connection.execute(
           'INSERT INTO photos (filename, path, user_id) VALUES (?, ?, ?)',
-          [filename, randomName, parseInt(user_id)]
+          [filename, randomName, parseInt(user_id, 10)]
         );
-        
+
         const photoId = result.insertId;
-        
-        // 插入图片-分类关联
+
         for (const categoryId of categoryArray) {
-          try {
-            // 检查分类是否存在
-            const [categoryCheck] = await connection.execute(
-              'SELECT id FROM categories WHERE id = ?',
-              [parseInt(categoryId)]
+          const [categoryCheck] = await connection.execute(
+            'SELECT id FROM categories WHERE id = ?',
+            [parseInt(categoryId, 10)]
+          );
+
+          if (categoryCheck.length > 0) {
+            await connection.execute(
+              'INSERT INTO photo_categories (photo_id, category_id) VALUES (?, ?)',
+              [photoId, parseInt(categoryId, 10)]
             );
-            
-            if (categoryCheck.length > 0) {
-              await connection.execute(
-                'INSERT INTO photo_categories (photo_id, category_id) VALUES (?, ?)',
-                [photoId, parseInt(categoryId)]
-              );
-            } else {
-              console.log(`分类ID ${categoryId} 不存在，跳过`);
-            }
-          } catch (error) {
-            console.error(`插入分类关联失败，分类ID: ${categoryId}`, error);
-            // 继续处理其他分类，不中断整个上传过程
           }
         }
-        
+
         results.push({
           id: photoId.toString(),
-          filename: filename,
+          filename,
           categories: categoryArray,
           path: randomName,
           user_id
         });
       }
-      
-      // 提交事务
+
       await connection.commit();
       connection.release();
-      
       ctx.body = results;
     } catch (error) {
-      // 回滚事务
       await connection.rollback();
       connection.release();
       throw error;
     }
   } catch (error) {
-    console.error('添加图片失败:', error);
+    console.error('Failed to add photos:', error);
     ctx.status = 500;
-    ctx.body = { error: '添加图片失败' };
+    ctx.body = { error: 'Failed to add photos' };
   }
 });
 
-// 删除图片
 router.delete('/api/photos/:id', async (ctx) => {
   try {
     const { id } = ctx.params;
-    
-    // 逻辑删除：更新status为0
     const [result] = await pool.execute(
       'UPDATE photos SET status = 0 WHERE id = ?',
-      [parseInt(id)]
+      [parseInt(id, 10)]
     );
-    
+
     if (result.affectedRows === 0) {
       ctx.status = 404;
-      ctx.body = { error: '图片不存在' };
+      ctx.body = { error: 'Photo not found' };
       return;
     }
-    
+
     ctx.body = { success: true };
   } catch (error) {
-    console.error('删除图片失败:', error);
+    console.error('Failed to delete photo:', error);
     ctx.status = 500;
-    ctx.body = { error: '删除图片失败' };
+    ctx.body = { error: 'Failed to delete photo' };
   }
 });
 
-// 验证用户
 router.post('/api/auth/login', async (ctx) => {
   try {
     const { username, password } = ctx.request.body;
@@ -267,7 +278,7 @@ router.post('/api/auth/login', async (ctx) => {
       'SELECT * FROM users WHERE username = ? AND password = ?',
       [username, password]
     );
-    
+
     if (users.length > 0) {
       const user = users[0];
       ctx.body = {
@@ -276,45 +287,42 @@ router.post('/api/auth/login', async (ctx) => {
       };
     } else {
       ctx.status = 401;
-      ctx.body = { error: '用户名或密码错误' };
+      ctx.body = { error: 'Invalid username or password' };
     }
   } catch (error) {
-    console.error('验证用户失败:', error);
+    console.error('Failed to validate user:', error);
     ctx.status = 500;
-    ctx.body = { error: '验证用户失败' };
+    ctx.body = { error: 'Failed to validate user' };
   }
 });
 
-// 注册用户
 router.post('/api/auth/register', async (ctx) => {
   try {
     const { username, password } = ctx.request.body;
-    
-    // 检查用户名是否已存在
     const [existingUsers] = await pool.execute(
       'SELECT * FROM users WHERE username = ?',
       [username]
     );
-    
+
     if (existingUsers.length > 0) {
       ctx.status = 400;
-      ctx.body = { error: '用户名已存在' };
+      ctx.body = { error: 'Username already exists' };
       return;
     }
-    
+
     const [result] = await pool.execute(
       'INSERT INTO users (username, password) VALUES (?, ?)',
       [username, password]
     );
-    
+
     ctx.body = {
       id: result.insertId.toString(),
       username
     };
   } catch (error) {
-    console.error('注册用户失败:', error);
+    console.error('Failed to register user:', error);
     ctx.status = 500;
-    ctx.body = { error: '注册用户失败' };
+    ctx.body = { error: 'Failed to register user' };
   }
 });
 
