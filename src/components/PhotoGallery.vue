@@ -1,23 +1,45 @@
 <template>
-  <main class="photoGallery">
-    <header class="topbar">
-      <div class="brandBlock">
+  <main class="galleryPage">
+    <header class="appTopbar">
+      <div class="brandCluster">
         <div class="brandMark">P</div>
         <div>
-          <h1>相册</h1>
-          <p>{{ total }} 张照片</p>
+          <strong>Photo Studio</strong>
+          <span>{{ currentUser.username }}</span>
         </div>
       </div>
 
-      <div class="topbarActions">
-        <span class="userChip">{{ currentUser.username }}</span>
+      <nav class="topbarActions" aria-label="相册操作">
         <el-button :icon="Folder" @click="router.push('/categories')">分类</el-button>
         <el-button type="primary" :icon="Upload" @click="isUploadOpen = true">上传</el-button>
         <el-button :icon="SwitchButton" circle title="退出登录" @click="handleLogout" />
-      </div>
+      </nav>
     </header>
 
-    <section class="galleryToolbar" aria-label="照片筛选">
+    <section class="libraryHero">
+      <div class="heroCopy">
+        <p class="eyebrow">PRIVATE LIBRARY</p>
+        <h1>你的私人影像库</h1>
+        <p>按分类浏览照片，瀑布流会随着滚动逐步加载，适合大量图片的首页体验。</p>
+      </div>
+
+      <div class="heroStats" aria-label="相册统计">
+        <article>
+          <span>{{ total }}</span>
+          <strong>照片</strong>
+        </article>
+        <article>
+          <span>{{ categories.length }}</span>
+          <strong>分类</strong>
+        </article>
+        <article>
+          <span>{{ selectedCategories.length || '全部' }}</span>
+          <strong>筛选</strong>
+        </article>
+      </div>
+    </section>
+
+    <section class="controlDock" aria-label="照片筛选">
       <el-input
         v-model="searchDraft"
         class="searchInput"
@@ -29,7 +51,7 @@
       <div class="categoryScroller">
         <button
           type="button"
-          class="categoryTag"
+          class="filterChip"
           :class="{ active: selectedCategories.length === 0 }"
           @click="clearCategoryFilter"
         >
@@ -39,7 +61,7 @@
           v-for="category in visibleCategories"
           :key="category.id"
           type="button"
-          class="categoryTag"
+          class="filterChip"
           :class="{ active: selectedCategories.includes(category.id) }"
           @click="toggleCategory(category.id)"
         >
@@ -57,19 +79,25 @@
 
     <section class="gallerySurface" aria-live="polite">
       <div v-if="isRefreshing" class="masonryGrid skeletonGrid">
-        <div v-for="index in 12" :key="index" class="photoSkeleton" />
+        <div v-for="index in 14" :key="index" class="photoSkeleton" />
       </div>
 
       <div v-else-if="photos.length > 0" class="masonryGrid">
         <article v-for="photo in photos" :key="photo.id" class="photoCard">
           <button class="imageButton" type="button" @click="openImageViewer(photo)">
             <img
+              v-if="!imageErrors[photo.id]"
               :src="imageSrc(photo.path)"
               :alt="photo.filename"
               class="photoImage"
               loading="lazy"
               decoding="async"
+              @error="markImageError(photo.id)"
             />
+            <div v-else class="imageFallback">
+              <el-icon><Picture /></el-icon>
+              <span>图片暂时无法显示</span>
+            </div>
           </button>
           <div class="photoMeta">
             <div class="photoName" :title="photo.filename">{{ photo.filename }}</div>
@@ -95,7 +123,7 @@
       <div v-else class="emptyState">
         <el-icon><Picture /></el-icon>
         <h2>暂无照片</h2>
-        <p>上传几张图片后，这里会以瀑布流展示。</p>
+        <p>上传第一组图片后，这里会自动生成瀑布流。</p>
         <el-button type="primary" :icon="Upload" @click="isUploadOpen = true">上传照片</el-button>
       </div>
 
@@ -108,9 +136,13 @@
         >
           加载更多
         </el-button>
-        <span v-else-if="photos.length > 0 && !isRefreshing">已显示全部</span>
+        <span v-else-if="photos.length > 0 && !isRefreshing">已显示全部照片</span>
       </div>
     </section>
+
+    <button class="mobileFab" type="button" title="上传照片" @click="isUploadOpen = true">
+      <el-icon><Upload /></el-icon>
+    </button>
 
     <ImageViewer
       :is-open="isImageViewerOpen"
@@ -166,6 +198,7 @@ const deletePhotoName = ref('');
 const isUploadOpen = ref(false);
 const loadMoreTrigger = ref(null);
 const searchDraft = ref(photoStore.searchTerm);
+const imageErrors = ref({});
 let observer;
 let searchTimer;
 
@@ -209,8 +242,18 @@ const imageSrc = (path) => {
 };
 
 const openImageViewer = (photo) => {
+  if (imageErrors.value[photo.id]) {
+    return;
+  }
   viewerImageUrl.value = imageSrc(photo.path);
   isImageViewerOpen.value = true;
+};
+
+const markImageError = (photoId) => {
+  imageErrors.value = {
+    ...imageErrors.value,
+    [photoId]: true
+  };
 };
 
 const showDeleteConfirm = (photo) => {
@@ -283,15 +326,16 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.photoGallery {
+.galleryPage {
   min-height: 100vh;
-  color: #1c1a17;
+  color: var(--text-strong);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(246, 243, 238, 0.96) 34rem),
-    #f6f3ee;
+    radial-gradient(circle at 14% 2%, rgba(214, 116, 68, 0.12), transparent 22rem),
+    radial-gradient(circle at 86% 10%, rgba(34, 95, 84, 0.16), transparent 24rem),
+    var(--surface-canvas);
 }
 
-.topbar {
+.appTopbar {
   position: sticky;
   top: 0;
   z-index: 40;
@@ -299,72 +343,143 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem clamp(1rem, 3vw, 2.5rem);
-  border-bottom: 1px solid rgba(48, 42, 34, 0.08);
-  background: rgba(255, 253, 248, 0.9);
+  padding: 0.85rem clamp(1rem, 3vw, 2.5rem);
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(255, 253, 248, 0.86);
   backdrop-filter: blur(18px);
 }
 
-.brandBlock {
+.brandCluster {
   display: flex;
   align-items: center;
-  gap: 0.875rem;
+  gap: 0.75rem;
   min-width: 0;
 }
 
 .brandMark {
   display: grid;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.45rem;
+  height: 2.45rem;
   flex: 0 0 auto;
   place-items: center;
   border-radius: 8px;
   color: #fff;
-  font-weight: 800;
-  background: #1f5f54;
+  font-weight: 850;
+  background: var(--accent);
 }
 
-.brandBlock h1 {
-  margin: 0;
-  font-size: 1.15rem;
-  line-height: 1.15;
-  letter-spacing: 0;
+.brandCluster strong,
+.brandCluster span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.brandBlock p {
-  margin: 0.125rem 0 0;
-  color: #776f64;
-  font-size: 0.85rem;
+.brandCluster strong {
+  line-height: 1.1;
+}
+
+.brandCluster span {
+  margin-top: 0.1rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
 }
 
 .topbarActions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.625rem;
+  gap: 0.55rem;
+}
+
+.libraryHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 30rem);
+  gap: 1rem;
+  align-items: end;
+  width: min(100%, 1560px);
+  margin: 0 auto;
+  padding: clamp(1.2rem, 3vw, 2.4rem) clamp(1rem, 3vw, 2.5rem) 1rem;
+}
+
+.heroCopy {
   min-width: 0;
 }
 
-.userChip {
-  max-width: 10rem;
-  padding: 0.425rem 0.7rem;
-  overflow: hidden;
-  border: 1px solid rgba(48, 42, 34, 0.1);
-  border-radius: 999px;
-  color: #504a42;
-  font-size: 0.875rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  background: rgba(255, 255, 255, 0.62);
+.eyebrow {
+  margin: 0 0 0.4rem;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
 }
 
-.galleryToolbar {
+.heroCopy h1 {
+  margin: 0;
+  font-size: clamp(2.3rem, 6vw, 5.6rem);
+  line-height: 0.96;
+  letter-spacing: 0;
+}
+
+.heroCopy p:last-child {
+  max-width: 38rem;
+  margin: 0.9rem 0 0;
+  color: var(--text-muted);
+}
+
+.heroStats {
   display: grid;
-  grid-template-columns: minmax(14rem, 21rem) minmax(0, 1fr) auto;
-  gap: 0.875rem;
+  grid-template-columns: repeat(3, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.82);
+  box-shadow: var(--shadow-sm);
+}
+
+.heroStats article {
+  display: grid;
+  gap: 0.2rem;
+  padding: 1rem;
+  border-left: 1px solid var(--line-soft);
+}
+
+.heroStats article:first-child {
+  border-left: 0;
+}
+
+.heroStats span {
+  overflow: hidden;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  font-weight: 850;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heroStats strong {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.controlDock {
+  position: sticky;
+  top: 4.2rem;
+  z-index: 35;
+  display: grid;
+  grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr) auto;
+  gap: 0.75rem;
   align-items: center;
-  padding: 1.15rem clamp(1rem, 3vw, 2.5rem);
-  border-bottom: 1px solid rgba(48, 42, 34, 0.08);
+  width: min(calc(100% - 2rem), 1510px);
+  margin: 0 auto;
+  padding: 0.75rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.88);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(18px);
 }
 
 .searchInput {
@@ -375,33 +490,33 @@ onUnmounted(() => {
   display: flex;
   gap: 0.5rem;
   overflow-x: auto;
-  padding: 0.125rem 0 0.25rem;
+  padding: 0.12rem 0 0.25rem;
   scrollbar-width: thin;
 }
 
-.categoryTag {
+.filterChip {
   flex: 0 0 auto;
-  min-height: 2rem;
-  padding: 0.35rem 0.75rem;
-  border: 1px solid rgba(48, 42, 34, 0.12);
+  min-height: 2.25rem;
+  padding: 0.42rem 0.78rem;
+  border: 1px solid var(--line);
   border-radius: 999px;
-  color: #514b43;
+  color: var(--text);
   font: inherit;
-  font-size: 0.875rem;
+  font-size: 0.88rem;
   background: rgba(255, 255, 255, 0.72);
   cursor: pointer;
   transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
 }
 
-.categoryTag:hover {
-  border-color: rgba(31, 95, 84, 0.45);
-  color: #17483f;
+.filterChip:hover {
+  border-color: rgba(34, 95, 84, 0.4);
+  color: var(--accent);
 }
 
-.categoryTag.active {
-  border-color: #1f5f54;
+.filterChip.active {
+  border-color: var(--accent);
   color: #fff;
-  background: #1f5f54;
+  background: var(--accent);
 }
 
 .modeSwitch {
@@ -411,7 +526,7 @@ onUnmounted(() => {
 .gallerySurface {
   width: min(100%, 1560px);
   margin: 0 auto;
-  padding: clamp(1rem, 2.5vw, 2rem);
+  padding: 1rem clamp(1rem, 3vw, 2.5rem) 5rem;
 }
 
 .masonryGrid {
@@ -424,11 +539,17 @@ onUnmounted(() => {
   width: 100%;
   margin: 0 0 1rem;
   overflow: hidden;
-  border: 1px solid rgba(48, 42, 34, 0.1);
+  border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: #fffdfa;
-  box-shadow: 0 14px 34px rgba(40, 34, 26, 0.08);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-sm);
   break-inside: avoid;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.photoCard:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 
 .imageButton {
@@ -436,7 +557,7 @@ onUnmounted(() => {
   width: 100%;
   padding: 0;
   border: 0;
-  background: #ebe6de;
+  background: var(--surface-muted);
   cursor: zoom-in;
 }
 
@@ -448,6 +569,28 @@ onUnmounted(() => {
   object-fit: cover;
 }
 
+.imageFallback {
+  display: grid;
+  min-height: 12rem;
+  place-items: center;
+  align-content: center;
+  gap: 0.45rem;
+  padding: 1rem;
+  color: var(--text-muted);
+  background:
+    linear-gradient(135deg, rgba(34, 95, 84, 0.08), rgba(214, 116, 68, 0.08)),
+    var(--surface-muted);
+}
+
+.imageFallback .el-icon {
+  color: var(--accent);
+  font-size: 1.7rem;
+}
+
+.imageFallback span {
+  font-size: 0.82rem;
+}
+
 .photoMeta {
   display: grid;
   gap: 0.55rem;
@@ -456,9 +599,9 @@ onUnmounted(() => {
 
 .photoName {
   overflow: hidden;
-  color: #25211d;
-  font-size: 0.9rem;
-  font-weight: 650;
+  color: var(--text-strong);
+  font-size: 0.92rem;
+  font-weight: 700;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -483,16 +626,16 @@ onUnmounted(() => {
   padding: 0.16rem 0.45rem;
   overflow: hidden;
   border-radius: 999px;
-  color: #5d554a;
+  color: var(--text-muted);
   font-size: 0.75rem;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: #eee7dc;
+  background: rgba(34, 95, 84, 0.08);
 }
 
 .deleteButton {
   flex: 0 0 auto;
-  color: #a23b32;
+  color: var(--danger);
   opacity: 0.68;
 }
 
@@ -502,38 +645,57 @@ onUnmounted(() => {
 
 .emptyState {
   display: grid;
-  min-height: 48vh;
+  min-height: 45vh;
   place-items: center;
   align-content: center;
   gap: 0.75rem;
   padding: 2rem;
-  color: #625a50;
+  color: var(--text-muted);
   text-align: center;
 }
 
 .emptyState .el-icon {
-  color: #1f5f54;
+  color: var(--accent);
   font-size: 3rem;
 }
 
 .emptyState h2 {
   margin: 0;
-  color: #1f1b17;
+  color: var(--text-strong);
   font-size: 1.35rem;
   letter-spacing: 0;
 }
 
 .emptyState p {
   margin: 0 0 0.5rem;
-  color: #71695f;
 }
 
 .loadMoreTrigger {
   display: grid;
   min-height: 4.5rem;
   place-items: center;
-  color: #7a7268;
+  color: var(--text-muted);
   font-size: 0.9rem;
+}
+
+.mobileFab {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  z-index: 50;
+  display: none;
+  width: 3.35rem;
+  height: 3.35rem;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--accent);
+  box-shadow: var(--shadow-md);
+}
+
+.mobileFab .el-icon {
+  font-size: 1.35rem;
 }
 
 .photoSkeleton {
@@ -542,7 +704,7 @@ onUnmounted(() => {
   height: 16rem;
   margin: 0 0 1rem;
   border-radius: 8px;
-  background: linear-gradient(90deg, #ebe5da 0%, #f8f4ed 50%, #ebe5da 100%);
+  background: linear-gradient(90deg, #e9e2d8 0%, #f8f4ed 50%, #e9e2d8 100%);
   background-size: 220% 100%;
   break-inside: avoid;
   animation: shimmer 1.2s ease-in-out infinite;
@@ -568,9 +730,14 @@ onUnmounted(() => {
   }
 }
 
-@media (max-width: 920px) {
-  .galleryToolbar {
+@media (max-width: 960px) {
+  .libraryHero {
     grid-template-columns: 1fr;
+  }
+
+  .controlDock {
+    grid-template-columns: 1fr;
+    top: 4rem;
   }
 
   .modeSwitch {
@@ -583,20 +750,42 @@ onUnmounted(() => {
 }
 
 @media (max-width: 680px) {
-  .topbar {
-    align-items: flex-start;
-    flex-direction: column;
+  .appTopbar {
+    padding: 0.75rem 1rem;
   }
 
-  .topbarActions {
-    width: 100%;
-    justify-content: flex-start;
-    overflow-x: auto;
-    padding-bottom: 0.125rem;
+  .brandCluster span {
+    max-width: 8rem;
   }
 
-  .userChip {
+  .topbarActions .el-button--primary {
     display: none;
+  }
+
+  .libraryHero {
+    padding: 1.2rem 1rem 0.75rem;
+  }
+
+  .heroCopy h1 {
+    font-size: 2.75rem;
+  }
+
+  .heroStats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .heroStats article {
+    padding: 0.8rem;
+  }
+
+  .controlDock {
+    top: 3.95rem;
+    width: calc(100% - 1rem);
+    padding: 0.6rem;
+  }
+
+  .gallerySurface {
+    padding: 0.75rem 0.75rem 5rem;
   }
 
   .masonryGrid {
@@ -607,9 +796,29 @@ onUnmounted(() => {
   .photoCard {
     margin-bottom: 0.75rem;
   }
+
+  .photoMeta {
+    padding: 0.65rem;
+  }
+
+  .mobileFab {
+    display: grid;
+  }
 }
 
-@media (max-width: 420px) {
+@media (max-width: 430px) {
+  .topbarActions .el-button:first-child {
+    display: none;
+  }
+
+  .heroCopy h1 {
+    font-size: 2.35rem;
+  }
+
+  .heroStats span {
+    font-size: 1.25rem;
+  }
+
   .masonryGrid {
     column-count: 1;
   }

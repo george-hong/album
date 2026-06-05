@@ -1,54 +1,87 @@
 <template>
-  <div class="authModal">
-    <div class="authModalContent">
-      <div class="authModalHeader">
-        <h2>{{ isRegistering ? '注册' : '登录' }}</h2>
+  <main class="authPage">
+    <section class="authHero" aria-label="相册登录">
+      <div class="heroMedia">
+        <div class="heroPhoto heroPhotoLarge"></div>
+        <div class="heroPhoto heroPhotoTall"></div>
+        <div class="heroPhoto heroPhotoSmall"></div>
       </div>
-      <el-form @submit.prevent="handleSubmit" class="authForm">
+      <div class="heroCopy">
+        <p class="eyebrow">PRIVATE PHOTO STUDIO</p>
+        <h1>把照片整理成一个顺手、好看的私人影像库</h1>
+        <p>登录后可上传、分类、筛选和浏览照片，首页会以瀑布流渐进加载。</p>
+      </div>
+    </section>
+
+    <section class="authPanel" aria-label="账户表单">
+      <div class="panelHeader">
+        <div class="brandMark">P</div>
+        <div>
+          <h2>{{ isRegistering ? '创建账户' : '欢迎回来' }}</h2>
+          <p>{{ isRegistering ? '注册后即可管理你的照片。' : '登录继续整理你的照片。' }}</p>
+        </div>
+      </div>
+
+      <el-form class="authForm" label-position="top" @submit.prevent="handleSubmit">
         <el-form-item label="用户名" required>
           <el-input
             v-model="formData.username"
+            size="large"
             placeholder="请输入用户名"
+            autocomplete="username"
           />
         </el-form-item>
+
         <el-form-item label="密码" required>
           <el-input
-            type="password"
             v-model="formData.password"
+            size="large"
+            type="password"
             placeholder="请输入密码"
+            autocomplete="current-password"
+            show-password
           />
         </el-form-item>
-        <div class="formActions">
-          <el-button type="primary" native-type="submit" style="width: 100%;">
-            {{ isRegistering ? '注册' : '登录' }}
-          </el-button>
-        </div>
-        <div class="authSwitch">
-          {{ isRegistering ? '已有账号？' : '没有账号？' }}
-          <el-button type="text" @click="toggleMode">
-            {{ isRegistering ? '去登录' : '去注册' }}
-          </el-button>
-        </div>
+
         <el-alert
           v-if="errorMessage"
           :title="errorMessage"
-          type="error"
+          :type="messageType"
           show-icon
-          style="margin-top: 1rem;"
+          :closable="false"
         />
+
+        <el-button
+          class="submitButton"
+          type="primary"
+          size="large"
+          native-type="submit"
+          :loading="isSubmitting"
+        >
+          {{ isRegistering ? '注册' : '登录' }}
+        </el-button>
       </el-form>
-    </div>
-  </div>
+
+      <div class="authSwitch">
+        <span>{{ isRegistering ? '已有账号？' : '还没有账号？' }}</span>
+        <el-button type="primary" link @click="toggleMode">
+          {{ isRegistering ? '去登录' : '去注册' }}
+        </el-button>
+      </div>
+    </section>
+  </main>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useAuthStore } from '../stores/auth';
 
 const emit = defineEmits(['success']);
 const authStore = useAuthStore();
 
 const isRegistering = ref(false);
+const isSubmitting = ref(false);
+const messageType = ref('error');
 const formData = ref({
   username: '',
   password: ''
@@ -57,14 +90,29 @@ const errorMessage = ref('');
 
 const toggleMode = () => {
   isRegistering.value = !isRegistering.value;
+  messageType.value = 'error';
   errorMessage.value = '';
 };
 
+const canSubmit = computed(() => formData.value.username.trim() && formData.value.password.trim());
+
 const handleSubmit = async () => {
+  if (!canSubmit.value) {
+    messageType.value = 'warning';
+    errorMessage.value = '请填写用户名和密码';
+    return;
+  }
+
+  isSubmitting.value = true;
+  messageType.value = 'error';
+  errorMessage.value = '';
+
   try {
     if (isRegistering.value) {
       await authStore.register(formData.value);
       isRegistering.value = false;
+      formData.value.password = '';
+      messageType.value = 'success';
       errorMessage.value = '注册成功，请登录';
     } else {
       await authStore.login(formData.value);
@@ -72,125 +120,220 @@ const handleSubmit = async () => {
     }
   } catch (error) {
     errorMessage.value = error.message || '操作失败，请重试';
+  } finally {
+    isSubmitting.value = false;
   }
 };
 </script>
 
 <style scoped>
-.authModal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 300;
+.authPage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(22rem, 28rem);
+  gap: clamp(1.25rem, 4vw, 4rem);
+  min-height: 100vh;
+  padding: clamp(1rem, 3vw, 2.5rem);
+  color: var(--text-strong);
+  background:
+    radial-gradient(circle at 18% 16%, rgba(255, 180, 105, 0.18), transparent 24rem),
+    radial-gradient(circle at 82% 14%, rgba(43, 111, 97, 0.14), transparent 22rem),
+    var(--surface-canvas);
 }
 
-.authModalContent {
-  background-color: white;
+.authHero {
+  position: relative;
+  display: grid;
+  min-height: calc(100vh - clamp(2rem, 6vw, 5rem));
+  align-content: end;
+  overflow: hidden;
   border-radius: 8px;
-  padding: 2rem;
-  width: 90%;
-  max-width: 400px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: #221f1a;
+  box-shadow: var(--shadow-lg);
 }
 
-.authModalHeader {
-  margin-bottom: 1.5rem;
-  text-align: center;
+.heroMedia {
+  position: absolute;
+  inset: 0;
 }
 
-.authModalHeader h2 {
+.heroMedia::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(180deg, rgba(18, 16, 14, 0.04), rgba(18, 16, 14, 0.76));
+}
+
+.heroPhoto {
+  position: absolute;
+  border-radius: 8px;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+}
+
+.heroPhotoLarge {
+  inset: 5% 23% 15% 5%;
+  background-image:
+    linear-gradient(140deg, rgba(28, 84, 73, 0.18), rgba(0, 0, 0, 0.08)),
+    url("https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1400&q=80");
+}
+
+.heroPhotoTall {
+  top: 14%;
+  right: 6%;
+  width: 27%;
+  height: 56%;
+  background-image:
+    linear-gradient(140deg, rgba(214, 116, 68, 0.18), rgba(0, 0, 0, 0.04)),
+    url("https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=900&q=80");
+}
+
+.heroPhotoSmall {
+  right: 14%;
+  bottom: 8%;
+  width: 32%;
+  height: 25%;
+  background-image:
+    linear-gradient(140deg, rgba(250, 196, 115, 0.18), rgba(0, 0, 0, 0.04)),
+    url("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=900&q=80");
+}
+
+.heroCopy {
+  position: relative;
+  z-index: 1;
+  max-width: 46rem;
+  padding: clamp(1.25rem, 5vw, 3.5rem);
+  color: #fffaf1;
+}
+
+.eyebrow {
+  margin: 0 0 0.85rem;
+  color: rgba(255, 250, 241, 0.72);
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+}
+
+.heroCopy h1 {
+  max-width: 15ch;
   margin: 0;
-  font-size: 1.25rem;
-  color: #333;
+  font-size: clamp(2.4rem, 6vw, 5.8rem);
+  line-height: 0.96;
+  letter-spacing: 0;
+}
+
+.heroCopy p:last-child {
+  max-width: 34rem;
+  margin: 1.1rem 0 0;
+  color: rgba(255, 250, 241, 0.78);
+  font-size: 1rem;
+}
+
+.authPanel {
+  align-self: center;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.88);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(18px);
+}
+
+.panelHeader {
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.brandMark {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 1.15rem;
+  font-weight: 850;
+  background: var(--accent);
+}
+
+.panelHeader h2 {
+  margin: 0;
+  font-size: 1.45rem;
+  letter-spacing: 0;
+}
+
+.panelHeader p {
+  margin: 0.2rem 0 0;
+  color: var(--text-muted);
 }
 
 .authForm {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.formGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.label {
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: #333;
-}
-
-.input {
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-  outline: none;
-  transition: border-color 0.3s;
-}
-
-.input:focus {
-  border-color: #0070f3;
-}
-
-.formActions {
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-end;
-  margin-top: 1rem;
+  display: grid;
+  gap: 0.2rem;
 }
 
 .submitButton {
-  padding: 0.75rem 1.5rem;
-  background-color: #0070f3;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.3s;
-  flex: 1;
-}
-
-.submitButton:hover {
-  background-color: #0050c3;
+  width: 100%;
+  margin-top: 0.35rem;
 }
 
 .authSwitch {
-  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.25rem;
   margin-top: 1rem;
-  font-size: 0.9rem;
-  color: #666;
+  color: var(--text-muted);
+  font-size: 0.92rem;
 }
 
-.switchButton {
-  background: none;
-  border: none;
-  color: #0070f3;
-  cursor: pointer;
-  font-size: 0.9rem;
-  padding: 0;
-  margin-left: 0.5rem;
+@media (max-width: 860px) {
+  .authPage {
+    grid-template-columns: 1fr;
+  }
+
+  .authHero {
+    min-height: 42vh;
+  }
+
+  .authPanel {
+    align-self: start;
+  }
 }
 
-.switchButton:hover {
-  text-decoration: underline;
-}
+@media (max-width: 560px) {
+  .authPage {
+    padding: 0;
+    background: var(--surface-canvas);
+  }
 
-.errorMessage {
-  background-color: #ffebee;
-  color: #c62828;
-  padding: 0.75rem;
-  border-radius: 4px;
-  margin-top: 1rem;
-  font-size: 0.9rem;
+  .authHero {
+    min-height: 36vh;
+    border-radius: 0;
+  }
+
+  .heroPhotoLarge {
+    inset: 0;
+  }
+
+  .heroPhotoTall,
+  .heroPhotoSmall {
+    display: none;
+  }
+
+  .heroCopy {
+    padding: 1.25rem;
+  }
+
+  .heroCopy h1 {
+    max-width: 13ch;
+    font-size: 2.35rem;
+  }
+
+  .authPanel {
+    margin: -1rem 0.75rem 1rem;
+  }
 }
 </style>

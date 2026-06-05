@@ -1,23 +1,28 @@
 <template>
-  <el-dialog
-    :visible="isOpen"
-    @close="close"
-    title="删除确认"
-    width="400px"
-  >
-    <p>您确定要删除图片 <span style="color: #ff4757; font-weight: 500;">{{ photoName }}</span> 吗？</p>
-    <p>此操作无法撤销。</p>
-    <template #footer>
-      <span class="dialog-footer">
-        <el-button @click="close">取消</el-button>
-        <el-button type="danger" @click="confirmDelete">删除</el-button>
-      </span>
-    </template>
-  </el-dialog>
+  <teleport to="body">
+    <div v-if="isOpen" class="confirmOverlay" @click.self="close">
+      <section class="confirmPanel" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+        <div class="dangerIcon">
+          <el-icon><Delete /></el-icon>
+        </div>
+        <h2 id="delete-title">删除照片？</h2>
+        <p>
+          确定要删除
+          <strong>{{ photoName }}</strong>
+          吗？删除后该照片将不再显示在相册中。
+        </p>
+
+        <footer class="confirmActions">
+          <el-button size="large" @click="close">取消</el-button>
+          <el-button type="danger" size="large" @click="confirmDelete">删除</el-button>
+        </footer>
+      </section>
+    </div>
+  </teleport>
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { Delete } from '@element-plus/icons-vue';
 
 const props = defineProps({
   isOpen: {
@@ -46,3 +51,79 @@ const confirmDelete = () => {
 };
 </script>
 
+<style scoped>
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(23, 20, 17, 0.48);
+  backdrop-filter: blur(10px);
+}
+
+.confirmPanel {
+  width: min(100%, 25rem);
+  padding: 1.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  border-radius: 8px;
+  color: var(--text-strong);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-lg);
+}
+
+.dangerIcon {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  color: var(--danger);
+  background: rgba(174, 62, 49, 0.1);
+}
+
+.dangerIcon .el-icon {
+  font-size: 1.45rem;
+}
+
+.confirmPanel h2 {
+  margin: 0;
+  font-size: 1.28rem;
+  letter-spacing: 0;
+}
+
+.confirmPanel p {
+  margin: 0.65rem 0 1.2rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+}
+
+.confirmPanel strong {
+  color: var(--text-strong);
+  word-break: break-all;
+}
+
+.confirmActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+@media (max-width: 520px) {
+  .confirmOverlay {
+    align-items: end;
+    padding: 0;
+  }
+
+  .confirmPanel {
+    width: 100%;
+    padding-bottom: calc(1.35rem + env(safe-area-inset-bottom));
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 8px 8px 0 0;
+  }
+}
+</style>

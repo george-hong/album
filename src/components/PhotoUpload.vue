@@ -1,94 +1,100 @@
 <template>
-  <div v-if="isOpen" class="uploadModal">
-    <div class="uploadModalContent">
-      <div class="uploadModalHeader">
-        <h2>上传图片</h2>
-        <button class="closeButton" @click="close">&times;</button>
-      </div>
-      <form @submit.prevent="handleSubmit" class="uploadForm">
-        <div class="formGroup">
-          <label class="label">图片名称</label>
-          <el-input
-            v-model="photoName"
-            placeholder="请输入图片名称"
-          />
-        </div>
-        
-        <div class="formGroup">
-          <label class="label">选择分类</label>
-          <div class="categoryTags">
-            <div
-              v-for="category in categories"
-              :key="category.id"
-              class="categoryTag"
-              :class="{ 'active': selectedCategories.includes(category.id) }"
-              @click="toggleCategory(category.id)"
-            >
-              {{ category.name }}
+  <teleport to="body">
+    <div v-if="isOpen" class="uploadOverlay" @click.self="close">
+      <section class="uploadSheet" aria-label="上传照片">
+        <header class="sheetHeader">
+          <div>
+            <p class="eyebrow">UPLOAD</p>
+            <h2>上传照片</h2>
+          </div>
+          <el-button :icon="Close" circle text title="关闭" @click="close" />
+        </header>
+
+        <form class="uploadForm" @submit.prevent="handleSubmit">
+          <label class="fieldGroup">
+            <span>照片名称</span>
+            <el-input
+              v-model="photoName"
+              size="large"
+              placeholder="留空则使用文件名"
+              clearable
+            />
+          </label>
+
+          <div class="fieldGroup">
+            <span>分类</span>
+            <div class="categoryRail">
+              <button
+                v-for="category in categories"
+                :key="category.id"
+                type="button"
+                class="categoryTag"
+                :class="{ active: selectedCategories.includes(category.id) }"
+                @click="toggleCategory(category.id)"
+              >
+                {{ category.name }}
+              </button>
             </div>
           </div>
-        </div>
-        
-        <div class="formGroup">
-          <label class="label">上传图片</label>
+
           <div
-            class="fileLabel"
-            :class="{ dragging: isDragging }"
+            class="dropzone"
+            :class="{ dragging: isDragging, hasFiles: selectedFiles.length > 0 }"
             @click="triggerFileInput"
             @dragover.prevent="handleDragOver"
             @dragleave.prevent="handleDragLeave"
             @drop.prevent="handleDrop"
           >
             <input
-              type="file"
               ref="fileInput"
-              @change="handleFileChange"
+              type="file"
               accept="image/*"
               multiple
-              style="display: none"
+              hidden
+              @change="handleFileChange"
             />
-            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="17 8 12 3 7 8"></polyline>
-              <line x1="12" y1="3" x2="12" y2="15"></line>
-            </svg>
-            <p>点击或拖拽图片到此处上传</p>
+            <el-icon><UploadFilled /></el-icon>
+            <h3>{{ selectedFiles.length > 0 ? `已选择 ${selectedFiles.length} 张照片` : '拖拽照片到这里' }}</h3>
+            <p>支持多选，也可以点击选择本地图片。</p>
           </div>
-        </div>
-        
-        <div v-if="previewImages.length > 0" class="previewList">
-          <div
-            v-for="(image, index) in previewImages"
-            :key="index"
-            class="previewItem"
-          >
-            <img :src="image.url" :alt="image.name" />
-            <button
-              type="button"
-              class="removePreview"
-              @click="removePreview(index)"
+
+          <div v-if="previewImages.length > 0" class="previewRail" aria-label="照片预览">
+            <article v-for="(image, index) in previewImages" :key="image.url" class="previewItem">
+              <img :src="image.url" :alt="image.name" />
+              <button type="button" title="移除" @click="removePreview(index)">
+                <el-icon><Close /></el-icon>
+              </button>
+              <span>{{ image.name }}</span>
+            </article>
+          </div>
+
+          <footer class="sheetActions">
+            <el-button size="large" @click="close">取消</el-button>
+            <el-button
+              type="primary"
+              size="large"
+              native-type="submit"
+              :loading="isSubmitting"
+              :disabled="selectedFiles.length === 0"
             >
-              &times;
-            </button>
-          </div>
-        </div>
-        
-        <div class="formActions">
-          <el-button @click="close">取消</el-button>
-          <el-button type="primary" @click="handleSubmit" :disabled="selectedFiles.length === 0">上传</el-button>
-        </div>
-      </form>
+              上传
+            </el-button>
+          </footer>
+        </form>
+      </section>
     </div>
-  </div>
+  </teleport>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { computed, ref } from 'vue';
+import { Close, UploadFilled } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 import { usePhotoStore } from '../stores/photo';
 import { useCategoryStore } from '../stores/category';
 import { useAuthStore } from '../stores/auth';
 
-const props = defineProps({
+defineProps({
   isOpen: {
     type: Boolean,
     default: false
@@ -106,16 +112,16 @@ const selectedCategories = ref([]);
 const selectedFiles = ref([]);
 const previewImages = ref([]);
 const isDragging = ref(false);
+const isSubmitting = ref(false);
 const fileInput = ref(null);
 
 const categories = computed(() => categoryStore.categories);
 
 const toggleCategory = (categoryId) => {
-  const index = selectedCategories.value.indexOf(categoryId);
-  if (index > -1) {
-    selectedCategories.value.splice(index, 1);
+  if (selectedCategories.value.includes(categoryId)) {
+    selectedCategories.value = selectedCategories.value.filter(id => id !== categoryId);
   } else {
-    selectedCategories.value.push(categoryId);
+    selectedCategories.value = [...selectedCategories.value, categoryId];
   }
 };
 
@@ -134,12 +140,17 @@ const resetForm = () => {
   selectedFiles.value = [];
   previewImages.value = [];
   isDragging.value = false;
+  isSubmitting.value = false;
 };
 
-const handleFileChange = (e) => {
-  if (e.target.files && e.target.files.length > 0) {
-    selectedFiles.value = Array.from(e.target.files);
-    generatePreviews(selectedFiles.value);
+const setFiles = (files) => {
+  selectedFiles.value = Array.from(files).filter(file => file.type.startsWith('image/'));
+  generatePreviews(selectedFiles.value);
+};
+
+const handleFileChange = (event) => {
+  if (event.target.files?.length) {
+    setFiles(event.target.files);
   }
 };
 
@@ -151,27 +162,24 @@ const handleDragLeave = () => {
   isDragging.value = false;
 };
 
-const handleDrop = (e) => {
+const handleDrop = (event) => {
   isDragging.value = false;
-  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-    selectedFiles.value = Array.from(e.dataTransfer.files);
-    generatePreviews(selectedFiles.value);
+  if (event.dataTransfer.files?.length) {
+    setFiles(event.dataTransfer.files);
   }
 };
 
 const generatePreviews = (files) => {
   previewImages.value = [];
   files.forEach(file => {
-    if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        previewImages.value.push({
-          name: file.name,
-          url: e.target.result
-        });
-      };
-      reader.readAsDataURL(file);
-    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      previewImages.value.push({
+        name: file.name,
+        url: event.target.result
+      });
+    };
+    reader.readAsDataURL(file);
   });
 };
 
@@ -181,259 +189,254 @@ const removePreview = (index) => {
 };
 
 const handleSubmit = async () => {
+  if (selectedFiles.value.length === 0) {
+    ElMessage.warning('请选择要上传的照片');
+    return;
+  }
+
+  isSubmitting.value = true;
+
   try {
     const formData = new FormData();
     formData.append('user_id', authStore.currentUser.id);
-    formData.append('photo_name', photoName.value);
+    formData.append('photo_name', photoName.value.trim());
     selectedCategories.value.forEach(categoryId => {
       formData.append('categories', categoryId);
     });
     selectedFiles.value.forEach(file => {
       formData.append('file', file);
     });
-    
+
     await photoStore.uploadPhoto(formData);
+    ElMessage.success('上传成功');
     emit('success');
     close();
   } catch (error) {
-    console.error('上传失败:', error);
+    ElMessage.error(error.message || '上传失败，请重试');
+  } finally {
+    isSubmitting.value = false;
   }
 };
 </script>
 
 <style scoped>
-.uploadModal {
+.uploadOverlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(23, 20, 17, 0.5);
+  backdrop-filter: blur(10px);
 }
 
-.uploadModalContent {
-  background-color: white;
+.uploadSheet {
+  width: min(100%, 44rem);
+  max-height: min(86vh, 46rem);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.52);
   border-radius: 8px;
-  padding: 2rem;
-  width: 90%;
-  max-width: 500px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  max-height: 90vh;
-  overflow-y: auto;
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-lg);
 }
 
-.uploadModalHeader {
+.sheetHeader {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1.5rem;
+  gap: 1rem;
+  padding: 1.25rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--line-soft);
 }
 
-.uploadModalHeader h2 {
+.eyebrow {
+  margin: 0 0 0.2rem;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.sheetHeader h2 {
   margin: 0;
-  font-size: 1.25rem;
-  color: #333;
-}
-
-.closeButton {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
-  cursor: pointer;
-  color: #999;
-  transition: color 0.3s;
-}
-
-.closeButton:hover {
-  color: #333;
+  font-size: 1.35rem;
+  letter-spacing: 0;
 }
 
 .uploadForm {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+  display: grid;
+  gap: 1rem;
+  max-height: calc(min(86vh, 46rem) - 5.2rem);
+  overflow-y: auto;
+  padding: 1.25rem;
 }
 
-.formGroup {
-  display: flex;
-  flex-direction: column;
+.fieldGroup {
+  display: grid;
   gap: 0.5rem;
 }
 
-.label {
+.fieldGroup > span {
+  color: var(--text);
   font-size: 0.9rem;
-  font-weight: 500;
-  color: #333;
+  font-weight: 700;
 }
 
-.input {
-  padding: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-  outline: none;
-  transition: border-color 0.3s;
-}
-
-.input:focus {
-  border-color: #0070f3;
-}
-
-.categoryTags {
+.categoryRail {
   display: flex;
-  flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
 }
 
 .categoryTag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.4rem 0.875rem;
-  background-color: #f5f7fa;
-  border: 1px solid #e4e7ed;
-  border-radius: 16px;
-  font-size: 0.85rem;
-  color: #606266;
+  flex: 0 0 auto;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.72);
   cursor: pointer;
-  transition: all 0.2s;
-  user-select: none;
-}
-
-.categoryTag:hover {
-  background-color: #ecf5ff;
-  border-color: #409EFF;
-  color: #409EFF;
 }
 
 .categoryTag.active {
-  background-color: #409EFF;
-  border-color: #409EFF;
-  color: white;
-  font-weight: 500;
+  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
 }
 
-.categoryTag.active:hover {
-  background-color: #66b1ff;
-}
-
-.fileLabel {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem;
-  border: 2px dashed #ddd;
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.3s;
+.dropzone {
+  display: grid;
+  place-items: center;
+  gap: 0.4rem;
+  min-height: 13.5rem;
+  padding: 1.5rem;
+  border: 1px dashed rgba(34, 95, 84, 0.36);
+  border-radius: 8px;
+  color: var(--text-muted);
   text-align: center;
-  min-height: 200px;
+  background: linear-gradient(180deg, rgba(34, 95, 84, 0.07), rgba(214, 116, 68, 0.05));
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
 }
 
-.fileLabel:hover {
-  border-color: #0070f3;
-  background-color: #f8f9ff;
+.dropzone:hover,
+.dropzone.dragging {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(34, 95, 84, 0.12), rgba(214, 116, 68, 0.08));
+  transform: translateY(-1px);
 }
 
-.fileLabel.dragging {
-  border-color: #0070f3;
-  background-color: #e6f0ff;
+.dropzone .el-icon {
+  color: var(--accent);
+  font-size: 2.5rem;
 }
 
-.fileLabel svg {
-  margin-bottom: 1rem;
-  color: #999;
-}
-
-.fileLabel p {
+.dropzone h3 {
   margin: 0;
-  color: #666;
-  font-size: 1rem;
+  color: var(--text-strong);
+  font-size: 1.05rem;
+  letter-spacing: 0;
 }
 
-.previewList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  margin-top: 1rem;
+.dropzone p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.previewRail {
+  display: grid;
+  grid-auto-columns: 8.8rem;
+  grid-auto-flow: column;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
 }
 
 .previewItem {
   position: relative;
-  width: 100px;
-  height: 100px;
-  border-radius: 4px;
   overflow: hidden;
-  border: 1px solid #ddd;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fff;
 }
 
 .previewItem img {
+  display: block;
   width: 100%;
-  height: 100%;
+  aspect-ratio: 1;
   object-fit: cover;
 }
 
-.removePreview {
+.previewItem button {
   position: absolute;
-  top: 5px;
-  right: 5px;
-  background-color: rgba(255, 0, 0, 0.8);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  font-size: 12px;
+  top: 0.4rem;
+  right: 0.4rem;
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(17, 15, 13, 0.62);
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.formActions {
+.previewItem span {
+  display: block;
+  padding: 0.45rem;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sheetActions {
+  position: sticky;
+  bottom: -1.25rem;
   display: flex;
-  gap: 1rem;
   justify-content: flex-end;
-  margin-top: 1rem;
+  gap: 0.75rem;
+  margin: 0 -1.25rem -1.25rem;
+  padding: 0.9rem 1.25rem;
+  border-top: 1px solid var(--line-soft);
+  background: rgba(255, 253, 248, 0.94);
+  backdrop-filter: blur(12px);
 }
 
-.cancelButton {
-  padding: 0.75rem 1.5rem;
-  background-color: #f0f0f0;
-  color: #333;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
+@media (max-width: 620px) {
+  .uploadOverlay {
+    align-items: end;
+    padding: 0;
+  }
 
-.cancelButton:hover {
-  background-color: #e0e0e0;
-}
+  .uploadSheet {
+    width: 100%;
+    max-height: 92vh;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 8px 8px 0 0;
+  }
 
-.submitButton {
-  padding: 0.75rem 1.5rem;
-  background-color: #0070f3;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
+  .uploadForm {
+    max-height: calc(92vh - 5.2rem);
+    padding: 1rem;
+  }
 
-.submitButton:hover {
-  background-color: #0050c3;
-}
+  .dropzone {
+    min-height: 10.5rem;
+  }
 
-.submitButton:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
+  .sheetActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin: 0 -1rem -1rem;
+    padding: 0.8rem 1rem calc(0.8rem + env(safe-area-inset-bottom));
+  }
 }
 </style>
