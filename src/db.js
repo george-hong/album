@@ -1,5 +1,34 @@
 const API_BASE_URL = '';
 
+const normalizeCategory = (category) => {
+  if (!category || category.id == null || typeof category.name !== 'string') {
+    return null;
+  }
+
+  return {
+    id: String(category.id),
+    name: category.name
+  };
+};
+
+const normalizePhoto = (photo) => ({
+  ...photo,
+  id: String(photo.id),
+  categories: Array.isArray(photo.categories)
+    ? photo.categories
+      .map(category => {
+        if (category && typeof category === 'object' && category.id != null) {
+          return {
+            id: String(category.id),
+            name: typeof category.name === 'string' ? category.name : ''
+          };
+        }
+        return category == null ? null : { id: String(category), name: '' };
+      })
+      .filter(Boolean)
+    : []
+});
+
 export const initDatabase = async () => {
   console.log('Database is ready');
 };
@@ -10,16 +39,12 @@ export const getCategories = async () => {
     if (!response.ok) {
       throw new Error('Failed to load categories');
     }
-    return await response.json();
+    const data = await response.json();
+    const items = Array.isArray(data) ? data : data.items ?? data.data ?? [];
+    return items.map(normalizeCategory).filter(Boolean);
   } catch (error) {
     console.error('Failed to load categories:', error);
-    return [
-      { id: '1', name: '全部' },
-      { id: '2', name: '风景' },
-      { id: '3', name: '人物' },
-      { id: '4', name: '动物' },
-      { id: '5', name: '建筑' }
-    ];
+    throw error;
   }
 };
 
@@ -62,47 +87,39 @@ export const updateCategory = async (categoryId, categoryData) => {
 };
 
 export const getPhotos = async (userId, options = {}) => {
-  try {
-    const params = new URLSearchParams();
-    params.set('page', String(options.page || 1));
-    params.set('limit', String(options.limit || 24));
+  const params = new URLSearchParams();
+  params.set('page', String(options.page || 1));
+  params.set('limit', String(options.limit || 24));
 
-    if (options.search) {
-      params.set('search', options.search);
-    }
-    if (options.filterMode) {
-      params.set('filterMode', options.filterMode);
-    }
-    if (options.categories?.length) {
-      params.set('categories', options.categories.join(','));
-    }
+  if (options.search) {
+    params.set('search', options.search);
+  }
+  if (options.filterMode) {
+    params.set('filterMode', options.filterMode);
+  }
+  if (options.categories?.length) {
+    params.set('categories', options.categories.join(','));
+  }
 
-    const response = await fetch(`${API_BASE_URL}/api/photos/${userId}?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error('Failed to load photos');
-    }
+  const response = await fetch(`${API_BASE_URL}/api/photos/${userId}?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error('照片加载失败，请稍后重试');
+  }
 
-    const data = await response.json();
-    if (Array.isArray(data)) {
-      return {
-        items: data,
-        page: 1,
-        limit: data.length,
-        total: data.length,
-        hasMore: false
-      };
-    }
-    return data;
-  } catch (error) {
-    console.error('Failed to load photos:', error);
+  const data = await response.json();
+  if (Array.isArray(data)) {
     return {
-      items: [],
+      items: data.map(normalizePhoto),
       page: 1,
-      limit: options.limit || 24,
-      total: 0,
+      limit: data.length,
+      total: data.length,
       hasMore: false
     };
   }
+  return {
+    ...data,
+    items: Array.isArray(data.items) ? data.items.map(normalizePhoto) : []
+  };
 };
 
 export const addPhoto = async (formData) => {
@@ -124,6 +141,20 @@ export const deletePhoto = async (photoId) => {
     throw new Error('Failed to delete photo');
   }
   return await response.json();
+};
+
+export const updatePhoto = async (photoId, photoData) => {
+  const response = await fetch(`${API_BASE_URL}/api/photos/${photoId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(photoData)
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update photo');
+  }
+  return normalizePhoto(await response.json());
 };
 
 export const validateUser = async (username, password) => {

@@ -1,13 +1,10 @@
 <template>
   <main class="categoryPage">
     <header class="pageTopbar">
-      <button class="backButton" type="button" @click="router.push('/')">
-        <el-icon><ArrowLeft /></el-icon>
-        <span>返回相册</span>
-      </button>
+      <el-button class="backButton" :icon="ArrowLeft" @click="router.push('/')">返回相册</el-button>
 
       <div class="topbarTitle">
-        <p>LIBRARY SETTINGS</p>
+        <p>相册设置</p>
         <h1>分类管理</h1>
       </div>
 
@@ -53,20 +50,30 @@
           </div>
         </div>
 
-        <div v-if="categories.length > 0" class="categoryGrid">
+        <div v-if="loadError" class="emptyState errorState">
+          <el-icon><WarningFilled /></el-icon>
+          <h2>分类加载失败</h2>
+          <p>{{ loadError }}</p>
+          <el-button type="primary" :icon="Refresh" @click="categoryStore.loadCategories()">
+            重新加载
+          </el-button>
+        </div>
+
+        <div v-else-if="categories.length > 0" class="categoryGrid">
           <article v-for="category in categories" :key="category.id" class="categoryItem">
             <div class="categoryIcon">
               <el-icon><Folder /></el-icon>
             </div>
             <div class="categoryInfo">
               <h3 :title="category.name">{{ category.name }}</h3>
-              <p>ID {{ category.id }}</p>
+              <p>分类编号 {{ category.id }}</p>
             </div>
             <el-button
               :icon="Delete"
               circle
               text
               title="删除分类"
+              aria-label="删除分类"
               class="deleteButton"
               :disabled="category.name === '全部'"
               @click="handleDeleteCategory(category)"
@@ -88,7 +95,15 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowLeft, Delete, Folder, FolderOpened, Plus } from '@element-plus/icons-vue';
+import {
+  ArrowLeft,
+  Delete,
+  Folder,
+  FolderOpened,
+  Plus,
+  Refresh,
+  WarningFilled
+} from '@element-plus/icons-vue';
 import { useCategoryStore } from '../stores/category';
 
 const router = useRouter();
@@ -97,6 +112,7 @@ const newCategory = ref('');
 const isSaving = ref(false);
 
 const categories = computed(() => categoryStore.categories);
+const loadError = computed(() => categoryStore.loadError);
 
 onMounted(async () => {
   await categoryStore.loadCategories();
@@ -152,7 +168,8 @@ const handleDeleteCategory = async (category) => {
   min-height: 100vh;
   color: var(--text-strong);
   background:
-    radial-gradient(circle at 12% 0%, rgba(214, 116, 68, 0.12), transparent 22rem),
+    linear-gradient(135deg, rgba(237, 147, 99, 0.09), transparent 34%),
+    linear-gradient(225deg, rgba(100, 208, 173, 0.08), transparent 36%),
     var(--surface-canvas);
 }
 
@@ -165,23 +182,13 @@ const handleDeleteCategory = async (category) => {
   gap: 1rem;
   align-items: center;
   padding: 1rem clamp(1rem, 3vw, 2.5rem);
-  border-bottom: 1px solid var(--line-soft);
-  background: rgba(255, 253, 248, 0.9);
+  border-bottom: 1px solid var(--line);
+  background: rgba(11, 18, 16, 0.9);
   backdrop-filter: blur(18px);
 }
 
 .backButton {
   justify-self: start;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 2.35rem;
-  padding: 0.45rem 0.75rem;
-  border: 1px solid var(--line-soft);
-  border-radius: 999px;
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.7);
-  cursor: pointer;
 }
 
 .topbarTitle {
@@ -208,7 +215,7 @@ const handleDeleteCategory = async (category) => {
   border: 1px solid var(--line-soft);
   border-radius: 999px;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.64);
+  background: var(--surface-elevated);
 }
 
 .categoryLayout {
@@ -224,7 +231,7 @@ const handleDeleteCategory = async (category) => {
 .listPanel {
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.82);
+  background: var(--surface-panel);
   box-shadow: var(--shadow-sm);
 }
 
@@ -248,7 +255,7 @@ const handleDeleteCategory = async (category) => {
   height: 2.4rem;
   place-items: center;
   border-radius: 8px;
-  color: #fff;
+  color: var(--accent-ink);
   background: var(--accent);
 }
 
@@ -297,14 +304,13 @@ const handleDeleteCategory = async (category) => {
   padding: 0.85rem;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: #fff;
-  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+  background: var(--surface-elevated);
+  transition: border-color 0.18s ease, background 0.18s ease;
 }
 
 .categoryItem:hover {
-  border-color: rgba(34, 95, 84, 0.32);
-  box-shadow: var(--shadow-sm);
-  transform: translateY(-1px);
+  border-color: rgba(100, 208, 173, 0.42);
+  background: var(--surface-hover);
 }
 
 .categoryIcon {
@@ -314,7 +320,7 @@ const handleDeleteCategory = async (category) => {
   place-items: center;
   border-radius: 8px;
   color: var(--accent);
-  background: rgba(34, 95, 84, 0.08);
+  background: rgba(100, 208, 173, 0.1);
 }
 
 .categoryInfo {
@@ -364,6 +370,10 @@ const handleDeleteCategory = async (category) => {
 
 .emptyState p {
   margin: 0;
+}
+
+.errorState .el-icon {
+  color: var(--danger);
 }
 
 @media (max-width: 820px) {

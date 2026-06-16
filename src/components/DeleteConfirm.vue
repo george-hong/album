@@ -1,19 +1,27 @@
 <template>
   <teleport to="body">
     <div v-if="isOpen" class="confirmOverlay" @click.self="close">
-      <section class="confirmPanel" role="dialog" aria-modal="true" aria-labelledby="delete-title">
+      <section
+        ref="dialogRef"
+        class="confirmPanel"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-title"
+        aria-describedby="delete-description"
+        tabindex="-1"
+      >
         <div class="dangerIcon">
           <el-icon><Delete /></el-icon>
         </div>
         <h2 id="delete-title">删除照片？</h2>
-        <p>
+        <p id="delete-description">
           确定要删除
           <strong>{{ photoName }}</strong>
           吗？删除后该照片将不再显示在相册中。
         </p>
 
         <footer class="confirmActions">
-          <el-button size="large" @click="close">取消</el-button>
+          <el-button ref="cancelButtonRef" size="large" @click="close">取消</el-button>
           <el-button type="danger" size="large" @click="confirmDelete">删除</el-button>
         </footer>
       </section>
@@ -22,7 +30,9 @@
 </template>
 
 <script setup>
+import { ref, toRef } from 'vue';
 import { Delete } from '@element-plus/icons-vue';
+import { useModalFocus } from '../composables/useModalFocus';
 
 const props = defineProps({
   isOpen: {
@@ -40,6 +50,8 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close', 'confirm']);
+const dialogRef = ref(null);
+const cancelButtonRef = ref(null);
 
 const close = () => {
   emit('close');
@@ -49,6 +61,13 @@ const confirmDelete = () => {
   emit('confirm', props.photoId);
   close();
 };
+
+useModalFocus({
+  isOpen: toRef(props, 'isOpen'),
+  panelRef: dialogRef,
+  initialFocusRef: cancelButtonRef,
+  onClose: close
+});
 </script>
 
 <style scoped>
@@ -59,14 +78,14 @@ const confirmDelete = () => {
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(23, 20, 17, 0.48);
+  background: rgba(3, 8, 7, 0.74);
   backdrop-filter: blur(10px);
 }
 
 .confirmPanel {
   width: min(100%, 25rem);
   padding: 1.35rem;
-  border: 1px solid rgba(255, 255, 255, 0.56);
+  border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--text-strong);
   background: var(--surface-panel);
@@ -81,7 +100,7 @@ const confirmDelete = () => {
   margin-bottom: 1rem;
   border-radius: 8px;
   color: var(--danger);
-  background: rgba(174, 62, 49, 0.1);
+  background: rgba(240, 120, 104, 0.12);
 }
 
 .dangerIcon .el-icon {

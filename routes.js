@@ -147,13 +147,20 @@ router.get('/api/photos/:userId', async (ctx) => {
     const photosWithCategories = await Promise.all(
       photos.map(async (photo) => {
         const [categories] = await pool.execute(
-          'SELECT category_id FROM photo_categories WHERE photo_id = ?',
+          `SELECT c.id, c.name
+           FROM photo_categories pc
+           INNER JOIN categories c ON c.id = pc.category_id
+           WHERE pc.photo_id = ?
+           ORDER BY c.id`,
           [photo.id]
         );
         return {
           id: photo.id.toString(),
           filename: photo.filename,
-          categories: categories.map(c => c.category_id.toString()),
+          categories: categories.map(category => ({
+            id: category.id.toString(),
+            name: category.name
+          })),
           path: photo.path,
           user_id: photo.user_id.toString()
         };
@@ -246,6 +253,101 @@ router.post('/api/photos', async (ctx) => {
     console.error('Failed to add photos:', error);
     ctx.status = 500;
     ctx.body = { error: 'Failed to add photos' };
+  }
+});
+
+router.put('/api/photos/:id', async (ctx) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { id } = ctx.params;
+    const photoId = parseInt(id, 10);
+    const filename = String(ctx.request.body.filename || '').trim();
+    const categoryIds = Array.isArray(ctx.request.body.categories)
+      ? ctx.request.body.categories
+        .map(categoryId => parseInt(categoryId, 10))
+        .filter(Number.isFinite)
+      : [];
+    const uniqueCategoryIds = [...new Set(categoryIds)];
+
+    if (!Number.isFinite(photoId)) {
+      ctx.status = 400;
+      ctx.body = { error: 'Invalid photo id' };
+      return;
+    }
+
+    if (!filename) {
+      ctx.status = 400;
+      ctx.body = { error: 'Filename is required' };
+      return;
+    }
+
+    await connection.beginTransaction();
+
+    const [photoRows] = await connection.execute(
+      'SELECT id, path, user_id FROM photos WHERE id = ? AND status = 1',
+      [photoId]
+    );
+
+    if (photoRows.length === 0) {
+      await connection.rollback();
+      ctx.status = 404;
+      ctx.body = { error: 'Photo not found' };
+      return;
+    }
+
+    await connection.execute(
+      'UPDATE photos SET filename = ? WHERE id = ?',
+      [filename, photoId]
+    );
+
+    await connection.execute(
+      'DELETE FROM photo_categories WHERE photo_id = ?',
+      [photoId]
+    );
+
+    for (const categoryId of uniqueCategoryIds) {
+      const [categoryCheck] = await connection.execute(
+        'SELECT id FROM categories WHERE id = ?',
+        [categoryId]
+      );
+
+      if (categoryCheck.length > 0) {
+        await connection.execute(
+          'INSERT INTO photo_categories (photo_id, category_id) VALUES (?, ?)',
+          [photoId, categoryId]
+        );
+      }
+    }
+
+    const [categories] = await connection.execute(
+      `SELECT c.id, c.name
+       FROM photo_categories pc
+       INNER JOIN categories c ON c.id = pc.category_id
+       WHERE pc.photo_id = ?
+       ORDER BY c.id`,
+      [photoId]
+    );
+
+    await connection.commit();
+
+    ctx.body = {
+      id: id.toString(),
+      filename,
+      categories: categories.map(category => ({
+        id: category.id.toString(),
+        name: category.name
+      })),
+      path: photoRows[0].path,
+      user_id: photoRows[0].user_id.toString()
+    };
+  } catch (error) {
+    await connection.rollback();
+    console.error('Failed to update photo:', error);
+    ctx.status = 500;
+    ctx.body = { error: 'Failed to update photo' };
+  } finally {
+    connection.release();
   }
 });
 

@@ -1,52 +1,69 @@
 <template>
   <teleport to="body">
     <div v-if="isOpen" class="uploadOverlay" @click.self="close">
-      <section class="uploadSheet" aria-label="上传照片">
+      <section
+        ref="dialogRef"
+        class="uploadSheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upload-title"
+        tabindex="-1"
+      >
         <header class="sheetHeader">
           <div>
-            <p class="eyebrow">UPLOAD</p>
-            <h2>上传照片</h2>
+            <p class="eyebrow">添加到相册</p>
+            <h2 id="upload-title">上传照片</h2>
           </div>
-          <el-button :icon="Close" circle text title="关闭" @click="close" />
+          <el-button
+            ref="closeButtonRef"
+            :icon="Close"
+            circle
+            text
+            title="关闭"
+            aria-label="关闭上传窗口"
+            @click="close"
+          />
         </header>
 
         <form class="uploadForm" @submit.prevent="handleSubmit">
           <label class="fieldGroup">
-            <span>照片名称</span>
+            <span>{{ selectedFiles.length > 1 ? '批量名称' : '照片名称' }}</span>
             <el-input
               v-model="photoName"
               size="large"
-              placeholder="留空则使用文件名"
+              name="photo_name"
+              autocomplete="off"
+              :placeholder="selectedFiles.length > 1 ? '留空则保留各自文件名' : '留空则使用文件名'"
               clearable
             />
           </label>
 
           <div class="fieldGroup">
             <span>分类</span>
-            <div class="categoryRail">
-              <button
-                v-for="category in categories"
-                :key="category.id"
-                type="button"
-                class="categoryTag"
-                :class="{ active: selectedCategories.includes(category.id) }"
-                @click="toggleCategory(category.id)"
-              >
-                {{ category.name }}
-              </button>
-            </div>
+            <CategoryPicker
+              v-model="selectedCategories"
+              :categories="categories"
+              placeholder="搜索分类"
+            />
           </div>
 
           <div
             class="dropzone"
             :class="{ dragging: isDragging, hasFiles: selectedFiles.length > 0 }"
+            role="button"
+            tabindex="0"
+            aria-controls="photo-files"
             @click="triggerFileInput"
+            @keydown.enter.prevent="triggerFileInput"
+            @keydown.space.prevent="triggerFileInput"
             @dragover.prevent="handleDragOver"
             @dragleave.prevent="handleDragLeave"
             @drop.prevent="handleDrop"
           >
             <input
               ref="fileInput"
+              id="photo-files"
+              name="photos"
               type="file"
               accept="image/*"
               multiple
@@ -58,15 +75,15 @@
             <p>支持多选，也可以点击选择本地图片。</p>
           </div>
 
-          <div v-if="previewImages.length > 0" class="previewRail" aria-label="照片预览">
-            <article v-for="(image, index) in previewImages" :key="image.url" class="previewItem">
-              <img :src="image.url" :alt="image.name" />
-              <button type="button" title="移除" @click="removePreview(index)">
-                <el-icon><Close /></el-icon>
-              </button>
-              <span>{{ image.name }}</span>
-            </article>
-          </div>
+          <PhotoPreviewGrid
+            v-if="previewImages.length > 0"
+            :items="previewImages"
+            variant="rail"
+            removable
+            show-names
+            aria-label="照片预览"
+            @remove="removePreview"
+          />
 
           <footer class="sheetActions">
             <el-button size="large" @click="close">取消</el-button>
@@ -87,14 +104,17 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, toRef } from 'vue';
 import { Close, UploadFilled } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { usePhotoStore } from '../stores/photo';
 import { useCategoryStore } from '../stores/category';
 import { useAuthStore } from '../stores/auth';
+import { useModalFocus } from '../composables/useModalFocus';
+import CategoryPicker from './CategoryPicker.vue';
+import PhotoPreviewGrid from './PhotoPreviewGrid.vue';
 
-defineProps({
+const props = defineProps({
   isOpen: {
     type: Boolean,
     default: false
@@ -114,16 +134,10 @@ const previewImages = ref([]);
 const isDragging = ref(false);
 const isSubmitting = ref(false);
 const fileInput = ref(null);
+const dialogRef = ref(null);
+const closeButtonRef = ref(null);
 
 const categories = computed(() => categoryStore.categories);
-
-const toggleCategory = (categoryId) => {
-  if (selectedCategories.value.includes(categoryId)) {
-    selectedCategories.value = selectedCategories.value.filter(id => id !== categoryId);
-  } else {
-    selectedCategories.value = [...selectedCategories.value, categoryId];
-  }
-};
 
 const triggerFileInput = () => {
   fileInput.value?.click();
@@ -133,6 +147,13 @@ const close = () => {
   emit('close');
   resetForm();
 };
+
+useModalFocus({
+  isOpen: toRef(props, 'isOpen'),
+  panelRef: dialogRef,
+  initialFocusRef: closeButtonRef,
+  onClose: close
+});
 
 const resetForm = () => {
   photoName.value = '';
@@ -227,7 +248,7 @@ const handleSubmit = async () => {
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(23, 20, 17, 0.5);
+  background: rgba(3, 8, 7, 0.72);
   backdrop-filter: blur(10px);
 }
 
@@ -235,7 +256,7 @@ const handleSubmit = async () => {
   width: min(100%, 44rem);
   max-height: min(86vh, 46rem);
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.52);
+  border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-panel);
   box-shadow: var(--shadow-lg);
@@ -290,34 +311,17 @@ const handleSubmit = async () => {
   padding-bottom: 0.2rem;
 }
 
-.categoryTag {
-  flex: 0 0 auto;
-  min-height: 2.25rem;
-  padding: 0.45rem 0.8rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.72);
-  cursor: pointer;
-}
-
-.categoryTag.active {
-  border-color: var(--accent);
-  color: #fff;
-  background: var(--accent);
-}
-
 .dropzone {
   display: grid;
   place-items: center;
   gap: 0.4rem;
   min-height: 13.5rem;
   padding: 1.5rem;
-  border: 1px dashed rgba(34, 95, 84, 0.36);
+  border: 1px dashed rgba(100, 208, 173, 0.5);
   border-radius: 8px;
   color: var(--text-muted);
   text-align: center;
-  background: linear-gradient(180deg, rgba(34, 95, 84, 0.07), rgba(214, 116, 68, 0.05));
+  background: linear-gradient(145deg, rgba(100, 208, 173, 0.1), rgba(237, 147, 99, 0.08));
   cursor: pointer;
   transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
 }
@@ -325,8 +329,13 @@ const handleSubmit = async () => {
 .dropzone:hover,
 .dropzone.dragging {
   border-color: var(--accent);
-  background: linear-gradient(180deg, rgba(34, 95, 84, 0.12), rgba(214, 116, 68, 0.08));
+  background: linear-gradient(145deg, rgba(100, 208, 173, 0.17), rgba(237, 147, 99, 0.12));
   transform: translateY(-1px);
+}
+
+.dropzone:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .dropzone .el-icon {
@@ -360,7 +369,7 @@ const handleSubmit = async () => {
   overflow: hidden;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-elevated);
 }
 
 .previewItem img {
@@ -375,14 +384,20 @@ const handleSubmit = async () => {
   top: 0.4rem;
   right: 0.4rem;
   display: grid;
-  width: 1.8rem;
-  height: 1.8rem;
+  width: 2.5rem;
+  height: 2.5rem;
   place-items: center;
   border: 0;
   border-radius: 999px;
-  color: #fff;
-  background: rgba(17, 15, 13, 0.62);
+  color: var(--text-strong);
+  background: rgba(9, 16, 14, 0.84);
   cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease;
+}
+
+.previewItem button:hover {
+  color: var(--accent-ink);
+  background: var(--accent);
 }
 
 .previewItem span {
@@ -404,7 +419,7 @@ const handleSubmit = async () => {
   margin: 0 -1.25rem -1.25rem;
   padding: 0.9rem 1.25rem;
   border-top: 1px solid var(--line-soft);
-  background: rgba(255, 253, 248, 0.94);
+  background: rgba(26, 39, 35, 0.96);
   backdrop-filter: blur(12px);
 }
 

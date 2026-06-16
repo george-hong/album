@@ -41,6 +41,6 @@ const handleAuthSuccess = async () => {
 <style scoped>
 .appShell {
   min-height: 100vh;
-  background: #f6f3ee;
+  background: transparent;
 }
 </style>

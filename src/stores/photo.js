@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { getPhotos, addPhoto, deletePhoto as dbDeletePhoto } from '../db';
+import { getPhotos, addPhoto, deletePhoto as dbDeletePhoto, updatePhoto as dbUpdatePhoto } from '../db';
 
 const PAGE_SIZE = 24;
 
@@ -14,6 +14,7 @@ export const usePhotoStore = defineStore('photo', () => {
   const hasMore = ref(true);
   const isLoading = ref(false);
   const isRefreshing = ref(false);
+  const loadError = ref('');
 
   async function loadPhotos(userId, options = {}) {
     if (!userId || isLoading.value) {
@@ -25,6 +26,7 @@ export const usePhotoStore = defineStore('photo', () => {
 
     isLoading.value = true;
     isRefreshing.value = shouldReset;
+    loadError.value = '';
 
     try {
       const result = await getPhotos(userId, {
@@ -39,6 +41,11 @@ export const usePhotoStore = defineStore('photo', () => {
       page.value = result.page + 1;
       total.value = result.total;
       hasMore.value = result.hasMore;
+    } catch (error) {
+      loadError.value = error.message || '照片加载失败，请稍后重试';
+      if (!shouldReset) {
+        hasMore.value = false;
+      }
     } finally {
       isLoading.value = false;
       isRefreshing.value = false;
@@ -66,6 +73,14 @@ export const usePhotoStore = defineStore('photo', () => {
     await dbDeletePhoto(photoId);
     photos.value = photos.value.filter(p => p.id !== photoId);
     total.value = Math.max(total.value - 1, 0);
+  }
+
+  async function updatePhoto(photoId, photoData) {
+    const updatedPhoto = await dbUpdatePhoto(photoId, photoData);
+    photos.value = photos.value.map(photo => (
+      photo.id === updatedPhoto.id ? updatedPhoto : photo
+    ));
+    return updatedPhoto;
   }
 
   function setSearchTerm(term) {
@@ -101,6 +116,7 @@ export const usePhotoStore = defineStore('photo', () => {
     hasMore.value = true;
     isLoading.value = false;
     isRefreshing.value = false;
+    loadError.value = '';
   }
 
   return {
@@ -113,11 +129,13 @@ export const usePhotoStore = defineStore('photo', () => {
     hasMore,
     isLoading,
     isRefreshing,
+    loadError,
     loadPhotos,
     refreshPhotos,
     loadMorePhotos,
     uploadPhoto,
     deletePhoto,
+    updatePhoto,
     setSearchTerm,
     setSelectedCategories,
     setFilterMode,

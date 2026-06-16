@@ -1,48 +1,49 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { getCategories, addCategory as dbAddCategory, deleteCategory as dbDeleteCategory, updateCategory as dbUpdateCategory } from '../db';
+import {
+  getCategories,
+  addCategory as dbAddCategory,
+  deleteCategory as dbDeleteCategory,
+  updateCategory as dbUpdateCategory
+} from '../db';
 
 export const useCategoryStore = defineStore('category', () => {
-  const categories = ref([
-    { id: '1', name: '全部' },
-    { id: '2', name: '风景' },
-    { id: '3', name: '人物' },
-    { id: '4', name: '动物' },
-    { id: '5', name: '建筑' },
-  ]);
-  
+  const categories = ref([]);
+  const isLoading = ref(false);
+  const loadError = ref('');
+
   async function loadCategories() {
+    isLoading.value = true;
+    loadError.value = '';
     try {
-      const cats = await getCategories();
-      console.log('Categories from API:', cats);
-      if (cats.length > 0) {
-        categories.value = cats;
-      } else {
-        console.log('Using default categories');
-      }
+      categories.value = await getCategories();
     } catch (error) {
-      console.error('Error loading categories:', error);
-      // 保留默认分类数据
+      loadError.value = error.message || '分类加载失败，请稍后重试';
+      console.error('加载分类失败:', error);
+    } finally {
+      isLoading.value = false;
     }
   }
-  
+
   async function addCategory(categoryData) {
     await dbAddCategory(categoryData);
     await loadCategories();
   }
-  
+
   async function deleteCategory(categoryId) {
     await dbDeleteCategory(categoryId);
     await loadCategories();
   }
-  
+
   async function updateCategory(categoryId, categoryData) {
     await dbUpdateCategory(categoryId, categoryData);
     await loadCategories();
   }
-  
+
   return {
     categories,
+    isLoading,
+    loadError,
     loadCategories,
     addCategory,
     deleteCategory,

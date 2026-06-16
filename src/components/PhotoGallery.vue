@@ -2,23 +2,32 @@
   <main class="galleryPage">
     <header class="appTopbar">
       <div class="brandCluster">
-        <div class="brandMark">P</div>
+        <div class="brandMark">相</div>
         <div>
-          <strong>Photo Studio</strong>
+          <strong>私人相册</strong>
           <span>{{ currentUser.username }}</span>
         </div>
       </div>
 
       <nav class="topbarActions" aria-label="相册操作">
-        <el-button :icon="Folder" @click="router.push('/categories')">分类</el-button>
-        <el-button type="primary" :icon="Upload" @click="isUploadOpen = true">上传</el-button>
-        <el-button :icon="SwitchButton" circle title="退出登录" @click="handleLogout" />
+        <el-button class="uploadButton" type="primary" :icon="Upload" @click="isUploadOpen = true">
+          上传
+        </el-button>
+        <el-dropdown trigger="click" placement="bottom-end" @command="handleTopbarCommand">
+          <el-button :icon="MoreFilled" circle title="更多操作" aria-label="更多操作" />
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item :icon="Folder" command="categories">分类管理</el-dropdown-item>
+              <el-dropdown-item :icon="SwitchButton" command="logout" divided>退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </nav>
     </header>
 
     <section class="libraryHero">
       <div class="heroCopy">
-        <p class="eyebrow">PRIVATE LIBRARY</p>
+        <p class="eyebrow">私人影像空间</p>
         <h1>你的私人影像库</h1>
         <p>按分类浏览照片，瀑布流会随着滚动逐步加载，适合大量图片的首页体验。</p>
       </div>
@@ -44,30 +53,19 @@
         v-model="searchDraft"
         class="searchInput"
         :prefix-icon="Search"
+        aria-label="搜索照片文件名"
         placeholder="搜索文件名"
         clearable
       />
 
-      <div class="categoryScroller">
-        <button
-          type="button"
-          class="filterChip"
-          :class="{ active: selectedCategories.length === 0 }"
-          @click="clearCategoryFilter"
-        >
-          全部
-        </button>
-        <button
-          v-for="category in visibleCategories"
-          :key="category.id"
-          type="button"
-          class="filterChip"
-          :class="{ active: selectedCategories.includes(category.id) }"
-          @click="toggleCategory(category.id)"
-        >
-          {{ category.name }}
-        </button>
-      </div>
+      <CategoryPicker
+        :model-value="selectedCategories"
+        :categories="categories"
+        include-all
+        inline
+        placeholder="筛选分类"
+        @update:model-value="setGalleryCategories"
+      />
 
       <el-segmented
         v-if="selectedCategories.length > 1"
@@ -77,14 +75,61 @@
       />
     </section>
 
-    <section class="gallerySurface" aria-live="polite">
+    <p class="srOnly" aria-live="polite">{{ galleryStatus }}</p>
+    <section class="gallerySurface">
+      <div v-if="loadError && photos.length > 0" class="inlineError" role="alert">
+        <span>{{ loadError }}</span>
+        <el-button type="primary" link :icon="Refresh" @click="refresh">重新加载</el-button>
+      </div>
+
+      <div v-if="photos.length > 0" class="batchBar" :class="{ active: selectedPhotoIds.length > 0 }">
+        <div class="batchSummary">
+          <strong>{{ selectedPhotoIds.length > 0 ? `已选择 ${selectedPhotoIds.length} 张` : '批量编辑' }}</strong>
+          <span>{{ selectedPhotoIds.length > 0 ? '可统一修改类别' : '勾选图片后可批量编辑信息' }}</span>
+        </div>
+        <div class="batchActions">
+          <el-button
+            :icon="Edit"
+            :disabled="selectedPhotoIds.length === 0"
+            @click="showBatchEditDialog"
+          >
+            批量编辑
+          </el-button>
+          <el-button
+            :disabled="selectedPhotoIds.length === 0"
+            @click="clearPhotoSelection"
+          >
+            清空选择
+          </el-button>
+        </div>
+      </div>
+
       <div v-if="isRefreshing" class="masonryGrid skeletonGrid">
         <div v-for="index in 14" :key="index" class="photoSkeleton" />
       </div>
 
       <div v-else-if="photos.length > 0" class="masonryGrid">
-        <article v-for="photo in photos" :key="photo.id" class="photoCard">
-          <button class="imageButton" type="button" @click="openImageViewer(photo)">
+        <article
+          v-for="photo in photos"
+          :key="photo.id"
+          class="photoCard"
+          :class="{ selected: isPhotoSelected(photo.id) }"
+        >
+          <button
+            type="button"
+            class="photoSelect"
+            :aria-label="`选择 ${photo.filename}`"
+            :aria-pressed="isPhotoSelected(photo.id)"
+            @click.stop="togglePhotoSelection(photo.id)"
+          >
+            <span />
+          </button>
+          <button
+            class="imageButton"
+            type="button"
+            :style="getImageFrameStyle(photo)"
+            @click="openImageViewer(photo)"
+          >
             <img
               v-if="!imageErrors[photo.id]"
               :src="imageSrc(photo.path)"
@@ -92,6 +137,7 @@
               class="photoImage"
               loading="lazy"
               decoding="async"
+              @load="rememberImageRatio(photo.id, $event)"
               @error="markImageError(photo.id)"
             />
             <div v-else class="imageFallback">
@@ -103,21 +149,40 @@
             <div class="photoName" :title="photo.filename">{{ photo.filename }}</div>
             <div class="photoFooter">
               <div class="photoCategories">
-                <span v-for="categoryId in photo.categories" :key="categoryId">
-                  {{ getCategoryName(categoryId) }}
+                <span v-for="(category, index) in photo.categories" :key="getCategoryKey(category, index)">
+                  {{ getCategoryName(category) }}
                 </span>
               </div>
-              <el-button
-                :icon="Delete"
-                circle
-                text
-                class="deleteButton"
-                title="删除"
-                @click="showDeleteConfirm(photo)"
-              />
+              <div class="photoActions">
+                <el-button
+                  :icon="Edit"
+                  circle
+                  text
+                  class="editButton"
+                  title="编辑"
+                  aria-label="编辑照片"
+                  @click="showEditDialog(photo)"
+                />
+                <el-button
+                  :icon="Delete"
+                  circle
+                  text
+                  class="deleteButton"
+                  title="删除"
+                  aria-label="删除照片"
+                  @click="showDeleteConfirm(photo)"
+                />
+              </div>
             </div>
           </div>
         </article>
+      </div>
+
+      <div v-else-if="loadError" class="emptyState errorState">
+        <el-icon><WarningFilled /></el-icon>
+        <h2>照片加载失败</h2>
+        <p>{{ loadError }}</p>
+        <el-button type="primary" :icon="Refresh" @click="refresh">重新加载</el-button>
       </div>
 
       <div v-else class="emptyState">
@@ -140,10 +205,6 @@
       </div>
     </section>
 
-    <button class="mobileFab" type="button" title="上传照片" @click="isUploadOpen = true">
-      <el-icon><Upload /></el-icon>
-    </button>
-
     <ImageViewer
       :is-open="isImageViewerOpen"
       :image-url="viewerImageUrl"
@@ -156,6 +217,15 @@
       :photo-name="deletePhotoName"
       @close="isDeleteConfirmOpen = false"
       @confirm="handleDeleteConfirm"
+    />
+
+    <PhotoEditDialog
+      :is-open="isEditDialogOpen"
+      :photo="editingPhoto"
+      :photos="batchEditingPhotos"
+      :categories="categories"
+      @close="isEditDialogOpen = false"
+      @saved="handlePhotoSaved"
     />
 
     <PhotoUpload
@@ -172,18 +242,24 @@ import { useRouter } from 'vue-router';
 import {
   ArrowDown,
   Delete,
+  Edit,
   Folder,
+  MoreFilled,
   Picture,
   Search,
   SwitchButton,
-  Upload
+  Upload,
+  Refresh,
+  WarningFilled
 } from '@element-plus/icons-vue';
 import { usePhotoStore } from '../stores/photo';
 import { useCategoryStore } from '../stores/category';
 import { useAuthStore } from '../stores/auth';
 import ImageViewer from './ImageViewer.vue';
 import DeleteConfirm from './DeleteConfirm.vue';
+import PhotoEditDialog from './PhotoEditDialog.vue';
 import PhotoUpload from './PhotoUpload.vue';
+import CategoryPicker from './CategoryPicker.vue';
 
 const router = useRouter();
 const photoStore = usePhotoStore();
@@ -195,10 +271,15 @@ const viewerImageUrl = ref('');
 const isDeleteConfirmOpen = ref(false);
 const deletePhotoId = ref('');
 const deletePhotoName = ref('');
+const isEditDialogOpen = ref(false);
+const editingPhoto = ref(null);
+const batchEditingPhotos = ref([]);
+const selectedPhotoIds = ref([]);
 const isUploadOpen = ref(false);
 const loadMoreTrigger = ref(null);
 const searchDraft = ref(photoStore.searchTerm);
 const imageErrors = ref({});
+const imageRatios = ref({});
 let observer;
 let searchTimer;
 
@@ -211,16 +292,27 @@ const currentUser = computed(() => authStore.currentUser);
 const categories = computed(() => categoryStore.categories);
 const visibleCategories = computed(() => categories.value.filter(category => category.name !== '全部'));
 const photos = computed(() => photoStore.photos);
+const selectedPhotos = computed(() => photos.value.filter(photo => selectedPhotoIds.value.includes(photo.id)));
 const total = computed(() => photoStore.total);
 const hasMore = computed(() => photoStore.hasMore);
 const isLoading = computed(() => photoStore.isLoading);
 const isRefreshing = computed(() => photoStore.isRefreshing);
+const loadError = computed(() => photoStore.loadError);
 const selectedCategories = computed(() => photoStore.selectedCategories);
 const filterMode = computed({
   get: () => photoStore.filterMode,
   set: (value) => {
     photoStore.setFilterMode(value);
   }
+});
+const galleryStatus = computed(() => {
+  if (isRefreshing.value) {
+    return '正在加载照片';
+  }
+  if (loadError.value) {
+    return '照片加载失败';
+  }
+  return `已显示 ${photos.value.length} 张照片，共 ${total.value} 张`;
 });
 
 const refresh = async () => {
@@ -256,19 +348,89 @@ const markImageError = (photoId) => {
   };
 };
 
+const rememberImageRatio = (photoId, event) => {
+  const { naturalWidth, naturalHeight } = event.target;
+  if (!naturalWidth || !naturalHeight) {
+    return;
+  }
+  imageRatios.value = {
+    ...imageRatios.value,
+    [photoId]: `${naturalWidth} / ${naturalHeight}`
+  };
+};
+
+const getImageFrameStyle = (photo) => ({
+  aspectRatio: imageRatios.value[photo.id] || '4 / 3'
+});
+
 const showDeleteConfirm = (photo) => {
   deletePhotoId.value = photo.id;
   deletePhotoName.value = photo.filename;
   isDeleteConfirmOpen.value = true;
 };
 
-const handleDeleteConfirm = async (photoId) => {
-  await photoStore.deletePhoto(photoId);
+const showEditDialog = (photo) => {
+  editingPhoto.value = photo;
+  batchEditingPhotos.value = [];
+  isEditDialogOpen.value = true;
 };
 
-const getCategoryName = (categoryId) => {
-  const category = categories.value.find(c => c.id === categoryId);
-  return category ? category.name : '未分类';
+const showBatchEditDialog = () => {
+  if (selectedPhotos.value.length === 0) {
+    return;
+  }
+  editingPhoto.value = null;
+  batchEditingPhotos.value = selectedPhotos.value;
+  isEditDialogOpen.value = true;
+};
+
+const handlePhotoSaved = (photo) => {
+  editingPhoto.value = Array.isArray(photo) ? null : photo;
+  if (Array.isArray(photo)) {
+    clearPhotoSelection();
+  }
+};
+
+const handleDeleteConfirm = async (photoId) => {
+  await photoStore.deletePhoto(photoId);
+  selectedPhotoIds.value = selectedPhotoIds.value.filter(id => id !== photoId);
+};
+
+const isPhotoSelected = (photoId) => selectedPhotoIds.value.includes(photoId);
+
+const togglePhotoSelection = (photoId) => {
+  if (selectedPhotoIds.value.includes(photoId)) {
+    selectedPhotoIds.value = selectedPhotoIds.value.filter(id => id !== photoId);
+  } else {
+    selectedPhotoIds.value = [...selectedPhotoIds.value, photoId];
+  }
+};
+
+const clearPhotoSelection = () => {
+  selectedPhotoIds.value = [];
+};
+
+const getCategoryKey = (category, index) => {
+  if (category && typeof category === 'object') {
+    return String(category.id ?? index);
+  }
+  return String(category ?? index);
+};
+
+const getCategoryName = (categoryValue) => {
+  if (categoryValue && typeof categoryValue === 'object') {
+    if (categoryValue.name) {
+      return categoryValue.name;
+    }
+  }
+
+  const categoryId = categoryValue && typeof categoryValue === 'object'
+    ? categoryValue.id
+    : categoryValue;
+
+  const normalizedId = String(categoryId ?? '');
+  const category = categories.value.find(item => String(item.id) === normalizedId);
+  return category?.name || '未分类';
 };
 
 const toggleCategory = async (categoryId) => {
@@ -281,6 +443,11 @@ const clearCategoryFilter = async () => {
   await refresh();
 };
 
+const setGalleryCategories = async (categoryIds) => {
+  photoStore.setSelectedCategories(categoryIds);
+  await refresh();
+};
+
 const handleUploadSuccess = async () => {
   await refresh();
 };
@@ -289,6 +456,17 @@ const handleLogout = () => {
   authStore.logout();
   photoStore.resetPhotos();
   router.push('/');
+};
+
+const handleTopbarCommand = (command) => {
+  if (command === 'categories') {
+    router.push('/categories');
+    return;
+  }
+
+  if (command === 'logout') {
+    handleLogout();
+  }
 };
 
 watch(searchDraft, (value) => {
@@ -330,8 +508,8 @@ onUnmounted(() => {
   min-height: 100vh;
   color: var(--text-strong);
   background:
-    radial-gradient(circle at 14% 2%, rgba(214, 116, 68, 0.12), transparent 22rem),
-    radial-gradient(circle at 86% 10%, rgba(34, 95, 84, 0.16), transparent 24rem),
+    linear-gradient(135deg, rgba(237, 147, 99, 0.09), transparent 32%),
+    linear-gradient(225deg, rgba(100, 208, 173, 0.1), transparent 35%),
     var(--surface-canvas);
 }
 
@@ -344,8 +522,8 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 1rem;
   padding: 0.85rem clamp(1rem, 3vw, 2.5rem);
-  border-bottom: 1px solid var(--line-soft);
-  background: rgba(255, 253, 248, 0.86);
+  border-bottom: 1px solid var(--line);
+  background: rgba(11, 18, 16, 0.88);
   backdrop-filter: blur(18px);
 }
 
@@ -363,9 +541,10 @@ onUnmounted(() => {
   flex: 0 0 auto;
   place-items: center;
   border-radius: 8px;
-  color: #fff;
+  color: var(--accent-ink);
   font-weight: 850;
   background: var(--accent);
+  box-shadow: 0 0 0 1px rgba(139, 226, 197, 0.18), 0 8px 24px rgba(0, 0, 0, 0.24);
 }
 
 .brandCluster strong,
@@ -405,6 +584,9 @@ onUnmounted(() => {
 
 .heroCopy {
   min-width: 0;
+  padding: clamp(1rem, 2.5vw, 1.6rem);
+  border-left: 3px solid var(--accent-warm);
+  background: rgba(26, 39, 35, 0.46);
 }
 
 .eyebrow {
@@ -417,8 +599,8 @@ onUnmounted(() => {
 
 .heroCopy h1 {
   margin: 0;
-  font-size: clamp(2.3rem, 6vw, 5.6rem);
-  line-height: 0.96;
+  font-size: clamp(2.15rem, 4vw, 4.25rem);
+  line-height: 1;
   letter-spacing: 0;
 }
 
@@ -434,7 +616,7 @@ onUnmounted(() => {
   overflow: hidden;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.82);
+  background: var(--surface-panel);
   box-shadow: var(--shadow-sm);
 }
 
@@ -447,6 +629,15 @@ onUnmounted(() => {
 
 .heroStats article:first-child {
   border-left: 0;
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+
+.heroStats article:nth-child(2) {
+  box-shadow: inset 0 3px 0 var(--accent-warm);
+}
+
+.heroStats article:nth-child(3) {
+  box-shadow: inset 0 3px 0 #b4a7ff;
 }
 
 .heroStats span {
@@ -477,7 +668,7 @@ onUnmounted(() => {
   padding: 0.75rem;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.88);
+  background: rgba(26, 39, 35, 0.92);
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(18px);
 }
@@ -494,31 +685,6 @@ onUnmounted(() => {
   scrollbar-width: thin;
 }
 
-.filterChip {
-  flex: 0 0 auto;
-  min-height: 2.25rem;
-  padding: 0.42rem 0.78rem;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--text);
-  font: inherit;
-  font-size: 0.88rem;
-  background: rgba(255, 255, 255, 0.72);
-  cursor: pointer;
-  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
-}
-
-.filterChip:hover {
-  border-color: rgba(34, 95, 84, 0.4);
-  color: var(--accent);
-}
-
-.filterChip.active {
-  border-color: var(--accent);
-  color: #fff;
-  background: var(--accent);
-}
-
 .modeSwitch {
   justify-self: end;
 }
@@ -529,22 +695,80 @@ onUnmounted(() => {
   padding: 1rem clamp(1rem, 3vw, 2.5rem) 5rem;
 }
 
+.inlineError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(240, 120, 104, 0.28);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(240, 120, 104, 0.08);
+}
+
+.batchBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: rgba(26, 39, 35, 0.72);
+}
+
+.batchBar.active {
+  border-color: rgba(100, 208, 173, 0.38);
+  background: rgba(34, 51, 45, 0.96);
+}
+
+.batchSummary {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.batchSummary strong {
+  color: var(--text-strong);
+  font-size: 0.95rem;
+}
+
+.batchSummary span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.batchActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.5rem;
+}
+
 .masonryGrid {
-  column-count: 5;
-  column-gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
 }
 
 .photoCard {
-  display: inline-block;
+  position: relative;
+  display: block;
   width: 100%;
-  margin: 0 0 1rem;
   overflow: hidden;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
-  background: var(--surface-panel);
+  background: var(--surface-elevated);
   box-shadow: var(--shadow-sm);
-  break-inside: avoid;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.photoCard.selected {
+  border-color: rgba(100, 208, 173, 0.7);
+  box-shadow: 0 0 0 2px rgba(100, 208, 173, 0.16), var(--shadow-sm);
 }
 
 .photoCard:hover {
@@ -552,34 +776,88 @@ onUnmounted(() => {
   transform: translateY(-2px);
 }
 
+.photoSelect {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 2;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 8px;
+  border: 0;
+  padding: 0;
+  background: rgba(11, 18, 16, 0.72);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  cursor: pointer;
+}
+
+.photoSelect span {
+  display: grid;
+  width: 1.1rem;
+  height: 1.1rem;
+  place-items: center;
+  border: 2px solid rgba(245, 241, 232, 0.78);
+  border-radius: 5px;
+  background: rgba(16, 24, 22, 0.5);
+}
+
+.photoSelect span::after {
+  width: 0.3rem;
+  height: 0.56rem;
+  border-right: 2px solid var(--accent-ink);
+  border-bottom: 2px solid var(--accent-ink);
+  content: "";
+  opacity: 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.photoSelect[aria-pressed="true"] span {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.photoSelect[aria-pressed="true"] span::after {
+  opacity: 1;
+}
+
 .imageButton {
+  position: relative;
   display: block;
   width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
   padding: 0;
   border: 0;
   background: var(--surface-muted);
   cursor: zoom-in;
 }
 
+.imageButton:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
 .photoImage {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
-  height: auto;
-  min-height: 8rem;
+  height: 100%;
   object-fit: cover;
 }
 
 .imageFallback {
+  position: absolute;
+  inset: 0;
   display: grid;
-  min-height: 12rem;
   place-items: center;
   align-content: center;
   gap: 0.45rem;
   padding: 1rem;
   color: var(--text-muted);
-  background:
-    linear-gradient(135deg, rgba(34, 95, 84, 0.08), rgba(214, 116, 68, 0.08)),
-    var(--surface-muted);
+  background: linear-gradient(135deg, var(--surface-muted), #382b27);
 }
 
 .imageFallback .el-icon {
@@ -633,8 +911,23 @@ onUnmounted(() => {
   background: rgba(34, 95, 84, 0.08);
 }
 
-.deleteButton {
+.photoActions {
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.editButton {
+  color: var(--accent-strong);
+  opacity: 0.72;
+}
+
+.editButton:hover {
+  opacity: 1;
+}
+
+.deleteButton {
   color: var(--danger);
   opacity: 0.68;
 }
@@ -678,44 +971,26 @@ onUnmounted(() => {
   font-size: 0.9rem;
 }
 
-.mobileFab {
-  position: fixed;
-  right: 1rem;
-  bottom: calc(1rem + env(safe-area-inset-bottom));
-  z-index: 50;
-  display: none;
-  width: 3.35rem;
-  height: 3.35rem;
-  place-items: center;
-  border: 0;
-  border-radius: 999px;
-  color: #fff;
-  background: var(--accent);
-  box-shadow: var(--shadow-md);
-}
-
-.mobileFab .el-icon {
-  font-size: 1.35rem;
-}
-
 .photoSkeleton {
-  display: inline-block;
+  display: block;
   width: 100%;
-  height: 16rem;
-  margin: 0 0 1rem;
+  aspect-ratio: 4 / 3;
   border-radius: 8px;
-  background: linear-gradient(90deg, #e9e2d8 0%, #f8f4ed 50%, #e9e2d8 100%);
+  background: linear-gradient(90deg, #22332d 0%, #31453e 50%, #22332d 100%);
   background-size: 220% 100%;
-  break-inside: avoid;
   animation: shimmer 1.2s ease-in-out infinite;
 }
 
 .photoSkeleton:nth-child(3n + 1) {
-  height: 20rem;
+  aspect-ratio: 3 / 4;
 }
 
 .photoSkeleton:nth-child(3n + 2) {
-  height: 12rem;
+  aspect-ratio: 1 / 1;
+}
+
+.errorState .el-icon {
+  color: var(--danger);
 }
 
 @keyframes shimmer {
@@ -726,7 +1001,7 @@ onUnmounted(() => {
 
 @media (max-width: 1180px) {
   .masonryGrid {
-    column-count: 4;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -745,7 +1020,7 @@ onUnmounted(() => {
   }
 
   .masonryGrid {
-    column-count: 3;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -756,10 +1031,6 @@ onUnmounted(() => {
 
   .brandCluster span {
     max-width: 8rem;
-  }
-
-  .topbarActions .el-button--primary {
-    display: none;
   }
 
   .libraryHero {
@@ -788,27 +1059,30 @@ onUnmounted(() => {
     padding: 0.75rem 0.75rem 5rem;
   }
 
-  .masonryGrid {
-    column-count: 2;
-    column-gap: 0.75rem;
+  .batchBar {
+    align-items: stretch;
+    flex-direction: column;
   }
 
-  .photoCard {
-    margin-bottom: 0.75rem;
+  .batchActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .masonryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
   }
 
   .photoMeta {
     padding: 0.65rem;
   }
 
-  .mobileFab {
-    display: grid;
-  }
 }
 
 @media (max-width: 430px) {
-  .topbarActions .el-button:first-child {
-    display: none;
+  .uploadButton {
+    min-width: 5.25rem;
   }
 
   .heroCopy h1 {
@@ -820,7 +1094,7 @@ onUnmounted(() => {
   }
 
   .masonryGrid {
-    column-count: 1;
+    grid-template-columns: 1fr;
   }
 }
 </style>

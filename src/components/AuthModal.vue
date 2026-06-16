@@ -7,7 +7,7 @@
         <div class="heroPhoto heroPhotoSmall"></div>
       </div>
       <div class="heroCopy">
-        <p class="eyebrow">PRIVATE PHOTO STUDIO</p>
+        <p class="eyebrow">私人影像空间</p>
         <h1>把照片整理成一个顺手、好看的私人影像库</h1>
         <p>登录后可上传、分类、筛选和浏览照片，首页会以瀑布流渐进加载。</p>
       </div>
@@ -15,7 +15,7 @@
 
     <section class="authPanel" aria-label="账户表单">
       <div class="panelHeader">
-        <div class="brandMark">P</div>
+        <div class="brandMark">相</div>
         <div>
           <h2>{{ isRegistering ? '创建账户' : '欢迎回来' }}</h2>
           <p>{{ isRegistering ? '注册后即可管理你的照片。' : '登录继续整理你的照片。' }}</p>
@@ -27,6 +27,7 @@
           <el-input
             v-model="formData.username"
             size="large"
+            name="username"
             placeholder="请输入用户名"
             autocomplete="username"
           />
@@ -37,8 +38,9 @@
             v-model="formData.password"
             size="large"
             type="password"
+            name="password"
             placeholder="请输入密码"
-            autocomplete="current-password"
+            :autocomplete="isRegistering ? 'new-password' : 'current-password'"
             show-password
           />
         </el-form-item>
@@ -135,8 +137,8 @@ const handleSubmit = async () => {
   padding: clamp(1rem, 3vw, 2.5rem);
   color: var(--text-strong);
   background:
-    radial-gradient(circle at 18% 16%, rgba(255, 180, 105, 0.18), transparent 24rem),
-    radial-gradient(circle at 82% 14%, rgba(43, 111, 97, 0.14), transparent 22rem),
+    linear-gradient(135deg, rgba(237, 147, 99, 0.12), transparent 32%),
+    linear-gradient(225deg, rgba(100, 208, 173, 0.12), transparent 36%),
     var(--surface-canvas);
 }
 
@@ -232,9 +234,9 @@ const handleSubmit = async () => {
 .authPanel {
   align-self: center;
   padding: clamp(1.25rem, 3vw, 2rem);
-  border: 1px solid var(--line-soft);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 253, 248, 0.88);
+  background: rgba(26, 39, 35, 0.92);
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(18px);
 }
@@ -252,7 +254,7 @@ const handleSubmit = async () => {
   height: 2.75rem;
   place-items: center;
   border-radius: 8px;
-  color: #fff;
+  color: var(--accent-ink);
   font-size: 1.15rem;
   font-weight: 850;
   background: var(--accent);
