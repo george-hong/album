@@ -33,7 +33,6 @@ CREATE TABLE IF NOT EXISTS photo_categories (
 );
 
 -- 插入默认分类
-INSERT INTO categories (name) VALUES ('全部');
 INSERT INTO categories (name) VALUES ('风景');
 INSERT INTO categories (name) VALUES ('人物');
 INSERT INTO categories (name) VALUES ('动物');
