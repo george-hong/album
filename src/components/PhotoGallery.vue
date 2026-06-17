@@ -16,8 +16,9 @@
         <el-dropdown trigger="click" placement="bottom-end" @command="handleTopbarCommand">
           <el-button :icon="MoreFilled" circle title="更多操作" aria-label="更多操作" />
           <template #dropdown>
-            <el-dropdown-menu>
+              <el-dropdown-menu>
               <el-dropdown-item :icon="Folder" command="categories">分类管理</el-dropdown-item>
+              <el-dropdown-item :icon="Refresh" command="syncDimensions">更新图片尺寸</el-dropdown-item>
               <el-dropdown-item :icon="SwitchButton" command="logout" divided>退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
@@ -82,7 +83,7 @@
         <el-button type="primary" link :icon="Refresh" @click="refresh">重新加载</el-button>
       </div>
 
-      <div v-if="photos.length > 0" class="batchBar" :class="{ active: selectedPhotoIds.length > 0 }">
+      <div v-if="photos.length > 0" class="batchBar" :class="{ active: isBatchSelecting || selectedPhotoIds.length > 0 }">
         <div class="batchSummary">
           <strong>{{ selectedPhotoIds.length > 0 ? `已选择 ${selectedPhotoIds.length} 张` : '批量编辑' }}</strong>
           <span>{{ selectedPhotoIds.length > 0 ? '可统一修改类别' : '勾选图片后可批量编辑信息' }}</span>
@@ -90,14 +91,14 @@
         <div class="batchActions">
           <el-button
             :icon="Edit"
-            :disabled="selectedPhotoIds.length === 0"
-            @click="showBatchEditDialog"
+            :disabled="isBatchSelecting && selectedPhotoIds.length === 0"
+            @click="handleBatchButtonClick"
           >
             批量编辑
           </el-button>
           <el-button
-            :disabled="selectedPhotoIds.length === 0"
-            @click="clearPhotoSelection"
+            :disabled="!isBatchSelecting && selectedPhotoIds.length === 0"
+            @click="cancelBatchSelection"
           >
             清空选择
           </el-button>
@@ -105,17 +106,31 @@
       </div>
 
       <div v-if="isRefreshing" class="masonryGrid skeletonGrid">
-        <div v-for="index in 14" :key="index" class="photoSkeleton" />
+        <div
+          v-for="index in 14"
+          :key="index"
+          class="photoSkeleton"
+          :style="{ gridRowEnd: `span ${index % 3 === 1 ? 13 : index % 3 === 2 ? 10 : 9}` }"
+        />
       </div>
 
-      <div v-else-if="photos.length > 0" class="masonryGrid">
+      <div
+        v-else-if="photos.length > 0"
+        ref="galleryGrid"
+        class="masonryGrid"
+        :class="{ selecting: isBatchSelecting }"
+        @pointerdown="startMarqueeSelection"
+      >
         <article
           v-for="photo in photos"
           :key="photo.id"
           class="photoCard"
           :class="{ selected: isPhotoSelected(photo.id) }"
+          :data-photo-id="photo.id"
+          :style="getPhotoCardStyle(photo)"
         >
           <button
+            v-if="isBatchSelecting"
             type="button"
             class="photoSelect"
             :aria-label="`选择 ${photo.filename}`"
@@ -128,7 +143,7 @@
             class="imageButton"
             type="button"
             :style="getImageFrameStyle(photo)"
-            @click="openImageViewer(photo)"
+            @click="handlePhotoCardClick(photo)"
           >
             <img
               v-if="!imageErrors[photo.id]"
@@ -155,6 +170,7 @@
               </div>
               <div class="photoActions">
                 <el-button
+                  v-if="!isBatchSelecting"
                   :icon="Edit"
                   circle
                   text
@@ -164,6 +180,7 @@
                   @click="showEditDialog(photo)"
                 />
                 <el-button
+                  v-if="!isBatchSelecting"
                   :icon="Delete"
                   circle
                   text
@@ -176,6 +193,11 @@
             </div>
           </div>
         </article>
+        <div
+          v-if="selectionBox.isActive"
+          class="selectionBox"
+          :style="selectionBoxStyle"
+        />
       </div>
 
       <div v-else-if="loadError" class="emptyState errorState">
@@ -239,6 +261,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
 import {
   ArrowDown,
   Delete,
@@ -275,13 +298,27 @@ const isEditDialogOpen = ref(false);
 const editingPhoto = ref(null);
 const batchEditingPhotos = ref([]);
 const selectedPhotoIds = ref([]);
+const isBatchSelecting = ref(false);
 const isUploadOpen = ref(false);
+const isSyncingDimensions = ref(false);
 const loadMoreTrigger = ref(null);
+const galleryGrid = ref(null);
+const galleryWidth = ref(0);
 const searchDraft = ref(photoStore.searchTerm);
 const imageErrors = ref({});
 const imageRatios = ref({});
+const selectionBox = ref({
+  isActive: false,
+  startX: 0,
+  startY: 0,
+  currentX: 0,
+  currentY: 0
+});
 let observer;
+let galleryResizeObserver;
 let searchTimer;
+let hasMarqueeMoved = false;
+let suppressNextCardClick = false;
 
 const filterModeOptions = [
   { label: '交集', value: 'AND' },
@@ -315,6 +352,36 @@ const galleryStatus = computed(() => {
   return `已显示 ${photos.value.length} 张照片，共 ${total.value} 张`;
 });
 
+const selectionBoxStyle = computed(() => {
+  const left = Math.min(selectionBox.value.startX, selectionBox.value.currentX);
+  const top = Math.min(selectionBox.value.startY, selectionBox.value.currentY);
+  const width = Math.abs(selectionBox.value.currentX - selectionBox.value.startX);
+  const height = Math.abs(selectionBox.value.currentY - selectionBox.value.startY);
+
+  return {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${width}px`,
+    height: `${height}px`
+  };
+});
+
+const masonryColumnCount = computed(() => {
+  if (galleryWidth.value <= 430) {
+    return 1;
+  }
+  if (galleryWidth.value <= 680) {
+    return 2;
+  }
+  if (galleryWidth.value <= 960) {
+    return 3;
+  }
+  if (galleryWidth.value <= 1180) {
+    return 4;
+  }
+  return 5;
+});
+
 const refresh = async () => {
   await photoStore.refreshPhotos(authStore.currentUser.id);
 };
@@ -341,6 +408,19 @@ const openImageViewer = (photo) => {
   isImageViewerOpen.value = true;
 };
 
+const handlePhotoCardClick = (photo) => {
+  if (isBatchSelecting.value) {
+    if (suppressNextCardClick) {
+      suppressNextCardClick = false;
+      return;
+    }
+    togglePhotoSelection(photo.id);
+    return;
+  }
+
+  openImageViewer(photo);
+};
+
 const markImageError = (photoId) => {
   imageErrors.value = {
     ...imageErrors.value,
@@ -359,9 +439,40 @@ const rememberImageRatio = (photoId, event) => {
   };
 };
 
+const getPhotoAspectRatio = (photo) => {
+  if (photo?.width && photo?.height) {
+    return `${photo.width} / ${photo.height}`;
+  }
+  return imageRatios.value[photo.id] || '4 / 3';
+};
+
 const getImageFrameStyle = (photo) => ({
-  aspectRatio: imageRatios.value[photo.id] || '4 / 3'
+  aspectRatio: getPhotoAspectRatio(photo)
 });
+
+const getPhotoCardStyle = (photo) => {
+  const gap = galleryWidth.value <= 680 ? 12 : 16;
+  const rowHeight = 8;
+  const columns = masonryColumnCount.value;
+  const columnWidth = galleryWidth.value > 0
+    ? (galleryWidth.value - gap * (columns - 1)) / columns
+    : 280;
+  const loadedRatioParts = typeof imageRatios.value[photo.id] === 'string'
+    ? imageRatios.value[photo.id].split('/').map(part => Number(part.trim()))
+    : [];
+  const loadedRatio = loadedRatioParts[0] && loadedRatioParts[1]
+    ? loadedRatioParts[1] / loadedRatioParts[0]
+    : null;
+  const ratio = photo?.width && photo?.height
+    ? photo.height / photo.width
+    : loadedRatio || 3 / 4;
+  const metaHeight = 88;
+  const cardHeight = columnWidth * ratio + metaHeight;
+
+  return {
+    gridRowEnd: `span ${Math.max(1, Math.ceil((cardHeight + gap) / (rowHeight + gap)))}`
+  };
+};
 
 const showDeleteConfirm = (photo) => {
   deletePhotoId.value = photo.id;
@@ -384,10 +495,20 @@ const showBatchEditDialog = () => {
   isEditDialogOpen.value = true;
 };
 
+const handleBatchButtonClick = () => {
+  if (!isBatchSelecting.value) {
+    isBatchSelecting.value = true;
+    return;
+  }
+
+  showBatchEditDialog();
+};
+
 const handlePhotoSaved = (photo) => {
   editingPhoto.value = Array.isArray(photo) ? null : photo;
   if (Array.isArray(photo)) {
     clearPhotoSelection();
+    isBatchSelecting.value = false;
   }
 };
 
@@ -408,6 +529,128 @@ const togglePhotoSelection = (photoId) => {
 
 const clearPhotoSelection = () => {
   selectedPhotoIds.value = [];
+};
+
+const cancelBatchSelection = () => {
+  clearPhotoSelection();
+  isBatchSelecting.value = false;
+  selectionBox.value = {
+    ...selectionBox.value,
+    isActive: false
+  };
+};
+
+const getSelectionRect = () => {
+  const gridRect = galleryGrid.value?.getBoundingClientRect();
+  if (!gridRect) {
+    return null;
+  }
+
+  return {
+    left: Math.min(selectionBox.value.startX, selectionBox.value.currentX) + gridRect.left,
+    top: Math.min(selectionBox.value.startY, selectionBox.value.currentY) + gridRect.top,
+    right: Math.max(selectionBox.value.startX, selectionBox.value.currentX) + gridRect.left,
+    bottom: Math.max(selectionBox.value.startY, selectionBox.value.currentY) + gridRect.top
+  };
+};
+
+const togglePhotosInSelectionRect = () => {
+  const rect = getSelectionRect();
+  if (!rect || !galleryGrid.value) {
+    return;
+  }
+
+  const selectedIds = Array.from(galleryGrid.value.querySelectorAll('[data-photo-id]'))
+    .filter((element) => {
+      const photoRect = element.getBoundingClientRect();
+      return photoRect.left < rect.right
+        && photoRect.right > rect.left
+        && photoRect.top < rect.bottom
+        && photoRect.bottom > rect.top;
+    })
+    .map(element => element.dataset.photoId)
+    .filter(Boolean);
+
+  if (selectedIds.length === 0) {
+    return;
+  }
+
+  const nextSelectedIds = new Set(selectedPhotoIds.value);
+  selectedIds.forEach((photoId) => {
+    if (nextSelectedIds.has(photoId)) {
+      nextSelectedIds.delete(photoId);
+    } else {
+      nextSelectedIds.add(photoId);
+    }
+  });
+  selectedPhotoIds.value = [...nextSelectedIds];
+};
+
+const stopMarqueeSelection = () => {
+  if (hasMarqueeMoved) {
+    togglePhotosInSelectionRect();
+    suppressNextCardClick = true;
+    window.setTimeout(() => {
+      suppressNextCardClick = false;
+    }, 80);
+  }
+
+  selectionBox.value = {
+    ...selectionBox.value,
+    isActive: false
+  };
+  hasMarqueeMoved = false;
+  window.removeEventListener('pointermove', updateMarqueeSelection);
+  window.removeEventListener('pointerup', stopMarqueeSelection);
+};
+
+const updateMarqueeSelection = (event) => {
+  const gridRect = galleryGrid.value?.getBoundingClientRect();
+  if (!gridRect) {
+    return;
+  }
+
+  const currentX = event.clientX - gridRect.left;
+  const currentY = event.clientY - gridRect.top;
+  const movedX = Math.abs(currentX - selectionBox.value.startX);
+  const movedY = Math.abs(currentY - selectionBox.value.startY);
+  hasMarqueeMoved = movedX > 6 || movedY > 6;
+
+  selectionBox.value = {
+    ...selectionBox.value,
+    isActive: hasMarqueeMoved,
+    currentX,
+    currentY
+  };
+};
+
+const startMarqueeSelection = (event) => {
+  if (!isBatchSelecting.value || event.button !== 0) {
+    return;
+  }
+
+  if (event.target.closest('.photoSelect, .photoActions')) {
+    return;
+  }
+
+  const gridRect = galleryGrid.value?.getBoundingClientRect();
+  if (!gridRect) {
+    return;
+  }
+
+  const startX = event.clientX - gridRect.left;
+  const startY = event.clientY - gridRect.top;
+  hasMarqueeMoved = false;
+  selectionBox.value = {
+    isActive: false,
+    startX,
+    startY,
+    currentX: startX,
+    currentY: startY
+  };
+
+  window.addEventListener('pointermove', updateMarqueeSelection);
+  window.addEventListener('pointerup', stopMarqueeSelection, { once: true });
 };
 
 const getCategoryKey = (category, index) => {
@@ -448,6 +691,17 @@ const setGalleryCategories = async (categoryIds) => {
   await refresh();
 };
 
+const updateGalleryWidth = () => {
+  galleryWidth.value = galleryGrid.value?.clientWidth || 0;
+};
+
+const observeGalleryGrid = () => {
+  updateGalleryWidth();
+  if (galleryGrid.value && galleryResizeObserver) {
+    galleryResizeObserver.observe(galleryGrid.value);
+  }
+};
+
 const handleUploadSuccess = async () => {
   await refresh();
 };
@@ -458,9 +712,31 @@ const handleLogout = () => {
   router.push('/');
 };
 
+const handleSyncDimensions = async () => {
+  if (isSyncingDimensions.value) {
+    return;
+  }
+
+  isSyncingDimensions.value = true;
+  try {
+    const result = await photoStore.syncPhotoDimensions(authStore.currentUser.id);
+    await refresh();
+    ElMessage.success(`已更新 ${result.updated} 张图片尺寸`);
+  } catch (error) {
+    ElMessage.error(error.message || '更新图片尺寸失败，请重试');
+  } finally {
+    isSyncingDimensions.value = false;
+  }
+};
+
 const handleTopbarCommand = (command) => {
   if (command === 'categories') {
     router.push('/categories');
+    return;
+  }
+
+  if (command === 'syncDimensions') {
+    handleSyncDimensions();
     return;
   }
 
@@ -481,8 +757,19 @@ watch(filterMode, async () => {
   await refresh();
 });
 
+watch(
+  () => [photos.value.length, isRefreshing.value],
+  async () => {
+    await nextTick();
+    observeGalleryGrid();
+  }
+);
+
 onMounted(async () => {
   await nextTick();
+  galleryResizeObserver = new ResizeObserver(updateGalleryWidth);
+  observeGalleryGrid();
+
   observer = new IntersectionObserver((entries) => {
     const [entry] = entries;
     if (entry.isIntersecting && hasMore.value && !isLoading.value && !isRefreshing.value) {
@@ -499,6 +786,9 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.clearTimeout(searchTimer);
+  window.removeEventListener('pointermove', updateMarqueeSelection);
+  window.removeEventListener('pointerup', stopMarqueeSelection);
+  galleryResizeObserver?.disconnect();
   observer?.disconnect();
 });
 </script>
@@ -663,7 +953,7 @@ onUnmounted(() => {
   grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr) auto;
   gap: 0.75rem;
   align-items: center;
-  width: min(calc(100% - 2rem), 1510px);
+  width: min(calc(100% - 2 * clamp(1rem, 3vw, 2.5rem)), 1480px);
   margin: 0 auto;
   padding: 0.75rem;
   border: 1px solid var(--line-soft);
@@ -748,10 +1038,27 @@ onUnmounted(() => {
 }
 
 .masonryGrid {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-auto-flow: dense;
+  grid-auto-rows: 8px;
   gap: 1rem;
   align-items: start;
+}
+
+.masonryGrid.selecting {
+  user-select: none;
+}
+
+.selectionBox {
+  position: absolute;
+  z-index: 5;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: rgba(100, 208, 173, 0.16);
+  box-shadow: 0 0 0 1px rgba(100, 208, 173, 0.18);
+  pointer-events: none;
 }
 
 .photoCard {
@@ -769,6 +1076,10 @@ onUnmounted(() => {
 .photoCard.selected {
   border-color: rgba(100, 208, 173, 0.7);
   box-shadow: 0 0 0 2px rgba(100, 208, 173, 0.16), var(--shadow-sm);
+}
+
+.masonryGrid.selecting .photoCard {
+  cursor: pointer;
 }
 
 .photoCard:hover {
@@ -974,10 +1285,12 @@ onUnmounted(() => {
 .photoSkeleton {
   display: block;
   width: 100%;
+  margin: 0 0 1rem;
   aspect-ratio: 4 / 3;
   border-radius: 8px;
   background: linear-gradient(90deg, #22332d 0%, #31453e 50%, #22332d 100%);
   background-size: 220% 100%;
+  break-inside: avoid;
   animation: shimmer 1.2s ease-in-out infinite;
 }
 
@@ -1051,7 +1364,7 @@ onUnmounted(() => {
 
   .controlDock {
     top: 3.95rem;
-    width: calc(100% - 1rem);
+    width: calc(100% - 1.5rem);
     padding: 0.6rem;
   }
 

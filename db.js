@@ -13,14 +13,33 @@ const pool = mysql.createPool({
 
 // 初始化数据库
 export const initDatabase = async () => {
+  let connection;
   try {
     // 测试数据库连接
-    const connection = await pool.getConnection();
-    connection.release();
+    connection = await pool.getConnection();
+    const ensureColumn = async (columnName, definition) => {
+      const [columns] = await connection.execute(
+        `SELECT COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'photos'
+         AND COLUMN_NAME = ?`,
+        [columnName]
+      );
+
+      if (columns.length === 0) {
+        await connection.execute(`ALTER TABLE photos ADD COLUMN ${definition}`);
+      }
+    };
+
+    await ensureColumn('width', 'width INT DEFAULT NULL AFTER path');
+    await ensureColumn('height', 'height INT DEFAULT NULL AFTER width');
     console.log('数据库连接成功');
   } catch (error) {
     console.error('数据库连接失败:', error);
     throw error;
+  } finally {
+    connection?.release();
   }
 };
 

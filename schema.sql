@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS photos (
   id INT PRIMARY KEY AUTO_INCREMENT,
   filename VARCHAR(255) NOT NULL,
   path VARCHAR(255) NOT NULL,
+  width INT DEFAULT NULL,
+  height INT DEFAULT NULL,
   user_id INT NOT NULL,
   status INT DEFAULT 1, -- 1: 正常, 0: 已删除
   FOREIGN KEY (user_id) REFERENCES users (id)

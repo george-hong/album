@@ -11,9 +11,16 @@ const normalizeCategory = (category) => {
   };
 };
 
+const normalizeDimension = (value) => {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : null;
+};
+
 const normalizePhoto = (photo) => ({
   ...photo,
   id: String(photo.id),
+  width: normalizeDimension(photo.width),
+  height: normalizeDimension(photo.height),
   categories: Array.isArray(photo.categories)
     ? photo.categories
       .map(category => {
@@ -130,7 +137,8 @@ export const addPhoto = async (formData) => {
   if (!response.ok) {
     throw new Error('Failed to add photo');
   }
-  return await response.json();
+  const data = await response.json();
+  return Array.isArray(data) ? data.map(normalizePhoto) : normalizePhoto(data);
 };
 
 export const deletePhoto = async (photoId) => {
@@ -155,6 +163,42 @@ export const updatePhoto = async (photoId, photoData) => {
     throw new Error('Failed to update photo');
   }
   return normalizePhoto(await response.json());
+};
+
+export const updatePhotos = async (photoIds, photoData) => {
+  const response = await fetch(`${API_BASE_URL}/api/photos/batch`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      photoIds,
+      ...photoData
+    })
+  });
+  if (!response.ok) {
+    throw new Error('Failed to update photos');
+  }
+  const data = await response.json();
+  const items = Array.isArray(data) ? data : data.items ?? [];
+  return items.map(normalizePhoto);
+};
+
+export const syncPhotoDimensions = async (userId, options = {}) => {
+  const response = await fetch(`${API_BASE_URL}/api/photos/dimensions/sync`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      user_id: userId,
+      force: options.force === true
+    })
+  });
+  if (!response.ok) {
+    throw new Error('Failed to sync photo dimensions');
+  }
+  return await response.json();
 };
 
 export const validateUser = async (username, password) => {

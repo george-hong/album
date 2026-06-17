@@ -9,6 +9,92 @@ const __dirname = path.dirname(__filename);
 
 const router = new Router();
 
+const getImageDimensions = (filePath) => {
+  const buffer = fs.readFileSync(filePath);
+
+  if (buffer.length >= 24 && buffer.toString('ascii', 1, 4) === 'PNG') {
+    return {
+      width: buffer.readUInt32BE(16),
+      height: buffer.readUInt32BE(20)
+    };
+  }
+
+  if (buffer.length >= 10 && buffer.toString('ascii', 0, 3) === 'GIF') {
+    return {
+      width: buffer.readUInt16LE(6),
+      height: buffer.readUInt16LE(8)
+    };
+  }
+
+  if (buffer.length >= 26 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
+    const type = buffer.toString('ascii', 12, 16);
+    if (type === 'VP8 ' && buffer.length >= 30) {
+      return {
+        width: buffer.readUInt16LE(26) & 0x3fff,
+        height: buffer.readUInt16LE(28) & 0x3fff
+      };
+    }
+    if (type === 'VP8L' && buffer.length >= 25) {
+      const bits = buffer.readUInt32LE(21);
+      return {
+        width: (bits & 0x3fff) + 1,
+        height: ((bits >> 14) & 0x3fff) + 1
+      };
+    }
+    if (type === 'VP8X' && buffer.length >= 30) {
+      return {
+        width: buffer.readUIntLE(24, 3) + 1,
+        height: buffer.readUIntLE(27, 3) + 1
+      };
+    }
+  }
+
+  if (buffer.length >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+    let offset = 2;
+    while (offset + 3 < buffer.length) {
+      if (buffer[offset] !== 0xff) {
+        offset += 1;
+        continue;
+      }
+
+      const marker = buffer[offset + 1];
+      const blockLength = buffer.readUInt16BE(offset + 2);
+      if (blockLength < 2 || offset + 2 + blockLength > buffer.length) {
+        break;
+      }
+      if (
+        marker >= 0xc0
+        && marker <= 0xcf
+        && ![0xc4, 0xc8, 0xcc].includes(marker)
+        && blockLength >= 7
+      ) {
+        return {
+          width: buffer.readUInt16BE(offset + 7),
+          height: buffer.readUInt16BE(offset + 5)
+        };
+      }
+
+      offset += 2 + blockLength;
+    }
+  }
+
+  return { width: null, height: null };
+};
+
+const normalizeDimension = (value) => (
+  Number.isFinite(value) && value > 0 ? value : null
+);
+
+const serializePhoto = (photo, categories = []) => ({
+  id: photo.id.toString(),
+  filename: photo.filename,
+  categories,
+  path: photo.path,
+  width: normalizeDimension(photo.width),
+  height: normalizeDimension(photo.height),
+  user_id: photo.user_id.toString()
+});
+
 router.get('/api/categories', async (ctx) => {
   try {
     const [categories] = await pool.execute('SELECT * FROM categories');
@@ -154,16 +240,10 @@ router.get('/api/photos/:userId', async (ctx) => {
            ORDER BY c.id`,
           [photo.id]
         );
-        return {
-          id: photo.id.toString(),
-          filename: photo.filename,
-          categories: categories.map(category => ({
+        return serializePhoto(photo, categories.map(category => ({
             id: category.id.toString(),
             name: category.name
-          })),
-          path: photo.path,
-          user_id: photo.user_id.toString()
-        };
+          })));
       })
     );
 
@@ -209,11 +289,12 @@ router.post('/api/photos', async (ctx) => {
 
         const newFilePath = path.join(imagesDir, randomName);
         fs.renameSync(file.path, newFilePath);
+        const dimensions = getImageDimensions(newFilePath);
 
         const filename = photo_name || file.name;
         const [result] = await connection.execute(
-          'INSERT INTO photos (filename, path, user_id) VALUES (?, ?, ?)',
-          [filename, randomName, parseInt(user_id, 10)]
+          'INSERT INTO photos (filename, path, width, height, user_id) VALUES (?, ?, ?, ?, ?)',
+          [filename, randomName, dimensions.width, dimensions.height, parseInt(user_id, 10)]
         );
 
         const photoId = result.insertId;
@@ -237,6 +318,8 @@ router.post('/api/photos', async (ctx) => {
           filename,
           categories: categoryArray,
           path: randomName,
+          width: dimensions.width,
+          height: dimensions.height,
           user_id
         });
       }
@@ -253,6 +336,167 @@ router.post('/api/photos', async (ctx) => {
     console.error('Failed to add photos:', error);
     ctx.status = 500;
     ctx.body = { error: 'Failed to add photos' };
+  }
+});
+
+router.post('/api/photos/dimensions/sync', async (ctx) => {
+  try {
+    const userId = parseInt(ctx.request.body.user_id, 10);
+    const force = ctx.request.body.force === true;
+    const params = [];
+    const whereParts = ['status = 1'];
+
+    if (Number.isFinite(userId)) {
+      whereParts.push('user_id = ?');
+      params.push(userId);
+    }
+
+    if (!force) {
+      whereParts.push('(width IS NULL OR height IS NULL OR width <= 0 OR height <= 0)');
+    }
+
+    const [photos] = await pool.execute(
+      `SELECT id, path FROM photos WHERE ${whereParts.join(' AND ')}`,
+      params
+    );
+
+    let updated = 0;
+    let skipped = 0;
+    const failed = [];
+
+    for (const photo of photos) {
+      const imagePath = path.join(__dirname, 'images', photo.path);
+      if (!fs.existsSync(imagePath)) {
+        skipped += 1;
+        failed.push({
+          id: photo.id.toString(),
+          reason: 'File not found'
+        });
+        continue;
+      }
+
+      const dimensions = getImageDimensions(imagePath);
+      if (!dimensions.width || !dimensions.height) {
+        skipped += 1;
+        failed.push({
+          id: photo.id.toString(),
+          reason: 'Unsupported image dimensions'
+        });
+        continue;
+      }
+
+      await pool.execute(
+        'UPDATE photos SET width = ?, height = ? WHERE id = ?',
+        [dimensions.width, dimensions.height, photo.id]
+      );
+      updated += 1;
+    }
+
+    ctx.body = {
+      success: true,
+      scanned: photos.length,
+      updated,
+      skipped,
+      failed
+    };
+  } catch (error) {
+    console.error('Failed to sync photo dimensions:', error);
+    ctx.status = 500;
+    ctx.body = { error: 'Failed to sync photo dimensions' };
+  }
+});
+
+router.put('/api/photos/batch', async (ctx) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const photoIds = Array.isArray(ctx.request.body.photoIds)
+      ? ctx.request.body.photoIds
+        .map(photoId => parseInt(photoId, 10))
+        .filter(Number.isFinite)
+      : [];
+    const uniquePhotoIds = [...new Set(photoIds)];
+    const categoryIds = Array.isArray(ctx.request.body.categories)
+      ? ctx.request.body.categories
+        .map(categoryId => parseInt(categoryId, 10))
+        .filter(Number.isFinite)
+      : [];
+    const uniqueCategoryIds = [...new Set(categoryIds)];
+
+    if (uniquePhotoIds.length === 0) {
+      ctx.status = 400;
+      ctx.body = { error: 'Please choose at least one photo' };
+      return;
+    }
+
+    await connection.beginTransaction();
+
+    const placeholders = uniquePhotoIds.map(() => '?').join(',');
+    const [photoRows] = await connection.execute(
+      `SELECT id, filename, path, width, height, user_id FROM photos WHERE id IN (${placeholders}) AND status = 1`,
+      uniquePhotoIds
+    );
+
+    if (photoRows.length !== uniquePhotoIds.length) {
+      await connection.rollback();
+      ctx.status = 404;
+      ctx.body = { error: 'Some photos were not found' };
+      return;
+    }
+
+    await connection.execute(
+      `DELETE FROM photo_categories WHERE photo_id IN (${placeholders})`,
+      uniquePhotoIds
+    );
+
+    for (const categoryId of uniqueCategoryIds) {
+      const [categoryCheck] = await connection.execute(
+        'SELECT id FROM categories WHERE id = ?',
+        [categoryId]
+      );
+
+      if (categoryCheck.length > 0) {
+        for (const photoId of uniquePhotoIds) {
+          await connection.execute(
+            'INSERT INTO photo_categories (photo_id, category_id) VALUES (?, ?)',
+            [photoId, categoryId]
+          );
+        }
+      }
+    }
+
+    const [categoryRows] = await connection.execute(
+      `SELECT pc.photo_id, c.id, c.name
+       FROM photo_categories pc
+       INNER JOIN categories c ON c.id = pc.category_id
+       WHERE pc.photo_id IN (${placeholders})
+       ORDER BY pc.photo_id, c.id`,
+      uniquePhotoIds
+    );
+
+    await connection.commit();
+
+    const categoriesByPhotoId = categoryRows.reduce((result, category) => {
+      const photoId = category.photo_id.toString();
+      result[photoId] = result[photoId] || [];
+      result[photoId].push({
+        id: category.id.toString(),
+        name: category.name
+      });
+      return result;
+    }, {});
+
+    ctx.body = photoRows.map(photo => serializePhoto(
+      photo,
+      categoriesByPhotoId[photo.id.toString()] || []
+    ));
+  } catch (error) {
+    await connection.rollback();
+    console.error('Failed to batch update photos:', error);
+    ctx.status = 500;
+    ctx.body = { error: 'Failed to batch update photos' };
+  } finally {
+    connection.release();
   }
 });
 
@@ -285,7 +529,7 @@ router.put('/api/photos/:id', async (ctx) => {
     await connection.beginTransaction();
 
     const [photoRows] = await connection.execute(
-      'SELECT id, path, user_id FROM photos WHERE id = ? AND status = 1',
+      'SELECT id, path, width, height, user_id FROM photos WHERE id = ? AND status = 1',
       [photoId]
     );
 
@@ -331,16 +575,13 @@ router.put('/api/photos/:id', async (ctx) => {
 
     await connection.commit();
 
-    ctx.body = {
-      id: id.toString(),
-      filename,
-      categories: categories.map(category => ({
+    ctx.body = serializePhoto({
+      ...photoRows[0],
+      filename
+    }, categories.map(category => ({
         id: category.id.toString(),
         name: category.name
-      })),
-      path: photoRows[0].path,
-      user_id: photoRows[0].user_id.toString()
-    };
+      })));
   } catch (error) {
     await connection.rollback();
     console.error('Failed to update photo:', error);

@@ -1,6 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { getPhotos, addPhoto, deletePhoto as dbDeletePhoto, updatePhoto as dbUpdatePhoto } from '../db';
+import {
+  getPhotos,
+  addPhoto,
+  deletePhoto as dbDeletePhoto,
+  updatePhoto as dbUpdatePhoto,
+  updatePhotos as dbUpdatePhotos,
+  syncPhotoDimensions as dbSyncPhotoDimensions
+} from '../db';
 
 const PAGE_SIZE = 24;
 
@@ -83,6 +90,17 @@ export const usePhotoStore = defineStore('photo', () => {
     return updatedPhoto;
   }
 
+  async function updatePhotos(photoIds, photoData) {
+    const updatedPhotos = await dbUpdatePhotos(photoIds, photoData);
+    const updatedById = new Map(updatedPhotos.map(photo => [photo.id, photo]));
+    photos.value = photos.value.map(photo => updatedById.get(photo.id) || photo);
+    return updatedPhotos;
+  }
+
+  async function syncPhotoDimensions(userId, options = {}) {
+    return await dbSyncPhotoDimensions(userId, options);
+  }
+
   function setSearchTerm(term) {
     searchTerm.value = term;
   }
@@ -136,6 +154,8 @@ export const usePhotoStore = defineStore('photo', () => {
     uploadPhoto,
     deletePhoto,
     updatePhoto,
+    updatePhotos,
+    syncPhotoDimensions,
     setSearchTerm,
     setSelectedCategories,
     setFilterMode,

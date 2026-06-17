@@ -164,14 +164,26 @@ const resetForm = () => {
   isSubmitting.value = false;
 };
 
-const setFiles = (files) => {
-  selectedFiles.value = Array.from(files).filter(file => file.type.startsWith('image/'));
-  generatePreviews(selectedFiles.value);
+const getFileKey = (file) => `${file.name}-${file.size}-${file.lastModified}`;
+
+const addFiles = (files) => {
+  const existingKeys = new Set(selectedFiles.value.map(getFileKey));
+  const nextFiles = Array.from(files).filter(file => (
+    file.type.startsWith('image/') && !existingKeys.has(getFileKey(file))
+  ));
+
+  if (nextFiles.length === 0) {
+    return;
+  }
+
+  selectedFiles.value = [...selectedFiles.value, ...nextFiles];
+  generatePreviews(nextFiles);
 };
 
 const handleFileChange = (event) => {
   if (event.target.files?.length) {
-    setFiles(event.target.files);
+    addFiles(event.target.files);
+    event.target.value = '';
   }
 };
 
@@ -186,12 +198,11 @@ const handleDragLeave = () => {
 const handleDrop = (event) => {
   isDragging.value = false;
   if (event.dataTransfer.files?.length) {
-    setFiles(event.dataTransfer.files);
+    addFiles(event.dataTransfer.files);
   }
 };
 
 const generatePreviews = (files) => {
-  previewImages.value = [];
   files.forEach(file => {
     const reader = new FileReader();
     reader.onload = (event) => {

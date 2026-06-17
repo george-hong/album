@@ -165,12 +165,15 @@ const handleSubmit = async () => {
   isSubmitting.value = true;
 
   try {
-    const updatedPhotos = await Promise.all(
-      selectedPhotos.value.map(photo => photoStore.updatePhoto(photo.id, {
-        filename: isBatchMode.value ? photo.filename : nextFilename,
+    const updatedPhotos = isBatchMode.value
+      ? await photoStore.updatePhotos(
+        selectedPhotos.value.map(photo => photo.id),
+        { categories: selectedCategoryIds.value }
+      )
+      : [await photoStore.updatePhoto(selectedPhotos.value[0].id, {
+        filename: nextFilename,
         categories: selectedCategoryIds.value
-      }))
-    );
+      })];
     ElMessage.success(isBatchMode.value ? '批量照片信息已更新' : '照片信息已更新');
     emit('saved', isBatchMode.value ? updatedPhotos : updatedPhotos[0]);
     close();
